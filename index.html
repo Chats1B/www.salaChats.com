@@ -1,0 +1,1884 @@
+<!DOCTYPE html>
+<!--
+  ============================================================
+  VYNIX v3 — PRIVADO (contactos por correo, nada de números)
+
+  ★★★ MODO RÁPIDO: SIN CONFIGURACIÓN ★★★
+  Este archivo NO usa Firebase Auth: funciona YA en GitHub Pages,
+  Netlify o donde lo subas, sin tocar la consola de Firebase.
+
+  (OPCIONAL, para privacidad máxima DESPUÉS, cuando tengas 3 min):
+  1) Authentication → Sign-in method → ANONYMOUS → Activar
+  2) Authentication → Settings → Authorized domains → agregá
+     chats1b.github.io y tu-app.netlify.app
+  3) Realtime Database → Reglas → pegá esto → Publicar:
+
+{
+  "rules": {
+    "usuarios_chat": { "$uid": { ".read": "auth != null", ".write": "auth != null && auth.uid === $uid" } },
+    "emails": { "$key": { ".read": "auth != null", ".write": "!data.exists()" } },
+    "agenda": { "$uid": { "$other": {
+      ".read": "auth != null && auth.uid === $uid",
+      ".write": "auth != null && (auth.uid === $uid || (auth.uid === $other && root.child('agenda/' + auth.uid + '/' + $uid).exists()))"
+    } } },
+    "misGrupos": { "$uid": { "$gid": {
+      ".read": "auth != null && auth.uid === $uid",
+      ".write": "auth != null && (auth.uid === $uid || root.child('grupos/' + $gid + '/creador').val() === auth.uid)"
+    } } },
+    "misComunidades": { "$uid": { "$cid": {
+      ".read": "auth != null && auth.uid === $uid",
+      ".write": "auth != null && (auth.uid === $uid || root.child('comunidades/' + $cid + '/creador').val() === auth.uid)"
+    } } },
+    "grupos": { "$gid": {
+      ".read": "auth != null && (root.child('grupos/' + $gid + '/miembros/' + auth.uid).val() === true || (root.child('grupos/' + $gid + '/comunidadId').exists() && root.child('comunidades/' + root.child('grupos/' + $gid + '/comunidadId').val() + '/miembros/' + auth.uid).val() === true))",
+      ".write": "auth != null && (!data.exists() ? newData.child('creador').val() === auth.uid : data.child('creador').val() === auth.uid)"
+    } },
+    "comunidades": { "$cid": {
+      ".read": "auth != null && root.child('comunidades/' + $cid + '/miembros/' + auth.uid).val() === true",
+      ".write": "auth != null && (!data.exists() ? newData.child('creador').val() === auth.uid : data.child('creador').val() === auth.uid)"
+    } },
+    "chatMembers": { "$cid": { "$uid": {
+      ".write": "auth != null && newData.val() === true && (root.child('grupos/' + $cid + '/creador').val() === auth.uid || root.child('chatMembers/' + $cid + '/' + auth.uid).val() === true || (root.child('agenda/' + auth.uid + '/' + $uid).exists() && root.child('agenda/' + $uid + '/' + auth.uid).exists()))",
+      ".read": "auth != null && (root.child('chatMembers/' + $cid + '/' + auth.uid).val() === true || root.child('grupos/' + $cid + '/creador').val() === auth.uid)"
+    } } },
+    "conversaciones": { "$cid": {
+      ".read": "auth != null && root.child('chatMembers/' + $cid + '/' + auth.uid).val() === true",
+      ".write": "auth != null && root.child('chatMembers/' + $cid + '/' + auth.uid).val() === true"
+    } },
+    "estados": { "$uid": {
+      ".read": "auth != null && (auth.uid === $uid || root.child('agenda/' + auth.uid + '/' + $uid).exists() || root.child('agenda/' + $uid + '/' + auth.uid).exists())",
+      ".write": "auth != null && auth.uid === $uid"
+    } }
+  }
+}
+
+  IMPORTANTE: al activar las reglas, los datos de prueba viejos quedan
+  bloqueados automáticamente. Bórralos desde la consola si quieres.
+
+  ------------------------------------------------------------
+  CÓMO HACER QUE EL CÓDIGO LLEGUE AL CORREO DE VERDAD (gratis):
+  1) Crea cuenta en https://dashboard.emailjs.com (plan gratis)
+  2) Email Services → Add New Service → elegí Gmail → conectá tu
+     correo → copiá el SERVICE ID
+  3) Email Templates → Create New Template:
+     - "To email"  poné:  {{to_email}}
+     - Asunto:  Tu código de VYNIX
+     - Cuerpo:  Hola! Tu código de verificación es: {{passcode}}
+     - Guardá y copiá el TEMPLATE ID
+  4) Account → General → copiá tu PUBLIC KEY
+  5) Pegá esos 3 valores abajo en el script donde dice
+     EMAILJS_PUBLIC_KEY / EMAILJS_SERVICE_ID / EMAILJS_TEMPLATE_ID
+  Mientras no lo configures, la app funciona en MODO PRUEBA y te
+  muestra el código en pantalla.
+  ============================================================
+-->
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VYNIX</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .burbuja-mio { background-color:#d9fdd3; border-radius:8px 0px 8px 8px; box-shadow:0 1px 0.5px rgba(11,20,26,.13); }
+            .burbuja-otro { background-color:#ffffff; border-radius:0px 8px 8px 8px; box-shadow:0 1px 0.5px rgba(11,20,26,.13); }
+            .fondo-whatsapp {
+                background-color:#efeae2;
+                background-image:url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png');
+                background-repeat:repeat;
+            }
+            .recording { background-color:#ea4335 !important; animation:pulse 1s infinite; }
+            @keyframes pulse { 0%{transform:scale(1);} 50%{transform:scale(1.08);} 100%{transform:scale(1);} }
+            .recpulse { animation:recpulse 1s infinite; }
+            @keyframes recpulse { 0%,100%{opacity:1;} 50%{opacity:.55;} }
+            #llamada-avatar > * { width:100% !important; height:100% !important; }
+        }
+    </style>
+    <style>
+        .fondo-app {
+            background: radial-gradient(ellipse 95% 75% at 50% 55%, #00cde0 0%, #00c2d8 45%, #00a8cb 100%);
+            background-attachment: fixed;}
+    </style>
+</head>
+<body class="bg-[#111b21] min-h-screen font-sans flex justify-center items-center p-0 sm:p-3 select-none fondo-app">
+
+    <!-- ============ LOGIN ============ -->
+    <div id="login-screen" class="fixed inset-0 z-50 flex items-center justify-center p-4 fondo-app">
+        <div class="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center py-10">
+            <div class="w-20 h-20 bg-[#25D366] rounded-full flex items-center justify-center text-white text-4xl mx-auto mb-5 shadow-md"><i class="fa fa-whatsapp"></i></div>
+            <h2 class="text-2xl font-bold text-gray-900 mb-1 tracking-tight">VYNIX</h2>
+            <p class="text-sm text-gray-500 mb-1">Privado · Entrá con tu correo o tu número de teléfono</p>
+            <p class="text-[11px] text-gray-400 mb-5">El código de verificación te llega a tu correo</p>
+            <input type="email" id="login-email-input" class="w-full px-4 py-3.5 border border-gray-200 rounded-xl outline-none text-center text-base mb-4" placeholder="Tu correo o número de teléfono..." maxlength="100">
+            <input type="text" id="login-name-input" class="w-full px-4 py-3.5 border border-gray-200 rounded-xl outline-none text-center text-base mb-4 hidden" placeholder="Tu nombre..." maxlength="20">
+            <input type="text" id="login-code-input" class="w-full px-4 py-3.5 border border-gray-200 rounded-xl outline-none text-center text-base mb-4 hidden" placeholder="Código de verificación..." maxlength="6">
+            <button id="login-btn" onclick="enviarCodigoVerificacion()" class="w-full py-3.5 bg-[#25D366] hover:bg-[#20ba5a] text-white font-bold rounded-xl shadow-md transition duration-200">ENVIAR CÓDIGO</button>
+            <p id="login-envio-status" class="text-[11px] text-gray-500 mt-3 leading-snug" style="min-height:14px;"></p>
+        </div>
+    </div>
+
+    <!-- ============ APP ============ -->
+    <div id="app" class="relative w-full max-w-md h-screen sm:h-[95vh] bg-white sm:rounded-2xl overflow-hidden shadow-2xl flex-col hidden" style="display:none;">
+
+        <header class="bg-[#008069] text-white px-4 pt-4 pb-3 flex justify-between items-center shrink-0 z-30">
+            <div class="flex items-center gap-2">
+                <i class="fa fa-whatsapp text-xl"></i>
+                <h1 class="text-xl font-bold tracking-tight">VYNIX</h1>
+            </div>
+            <button onclick="toggleMenu()" class="text-lg px-2"><i class="fa fa-ellipsis-v"></i></button>
+            <div id="menu-dropdown" class="hidden absolute right-3 top-14 bg-white text-gray-800 rounded-lg shadow-2xl w-56 text-sm py-2 z-50">
+                <button onclick="abrirModalGrupo(null)" class="w-full text-left px-4 py-2.5 hover:bg-gray-100"><i class="fa fa-users w-5 text-[#008069]"></i> Nuevo grupo</button>
+                <button onclick="abrirModalContacto()" class="w-full text-left px-4 py-2.5 hover:bg-gray-100"><i class="fa fa-user-plus w-5 text-[#008069]"></i> Nuevo contacto</button>
+                <button onclick="abrirModalComunidad()" class="w-full text-left px-4 py-2.5 hover:bg-gray-100"><i class="fa fa-object-group w-5 text-[#008069]"></i> Nueva comunidad</button>
+                <hr class="my-1 border-gray-100">
+                <button onclick="borrarMiEstado(); alert('Tu estado ha sido borrado.');" class="w-full text-left px-4 py-2.5 hover:bg-gray-100"><i class="fa fa-circle-o-notch w-5 text-[#008069]"></i> Borrar mi estado</button>
+                <button onclick="location.reload()" class="w-full text-left px-4 py-2.5 hover:bg-gray-100"><i class="fa fa-refresh w-5 text-[#008069]"></i> Reconectar</button>
+            </div>
+        </header>
+
+        <div class="flex-1 relative overflow-hidden bg-white">
+
+            <!-- CHATS -->
+            <div id="pantalla-chats" class="absolute inset-0 overflow-y-auto">
+                <div class="p-2 bg-white sticky top-0 z-10">
+                    <div class="bg-[#f0f2f5] flex items-center gap-3 px-4 py-2 rounded-full">
+                        <i class="fa fa-search text-gray-400 text-sm"></i>
+                        <input type="text" id="buscador-chats" oninput="renderListaChats()" placeholder="Buscar o empezar un chat" class="bg-transparent text-sm outline-none w-full">
+                    </div>
+                </div>
+                <div id="chats-list"></div>
+            </div>
+
+            <!-- NOVEDADES -->
+            <div id="pantalla-novedades" class="absolute inset-0 overflow-y-auto hidden bg-white">
+                <h2 class="text-sm font-bold text-gray-500 px-4 pt-4 pb-2">ESTADOS</h2>
+                <div id="mi-estado-card"></div>
+                <h3 class="text-xs font-semibold text-gray-400 px-4 pt-4 pb-1">Recientes</h3>
+                <div id="estados-lista"></div>
+                <p class="text-[11px] text-gray-400 text-center px-8 pt-6 pb-4">Los estados solo los ven tus contactos y desaparecen a las 24 horas.</p>
+            </div>
+
+            <!-- COMUNIDADES -->
+            <div id="pantalla-comunidades" class="absolute inset-0 overflow-y-auto hidden bg-[#f0f2f5]">
+                <div class="p-3">
+                    <button onclick="abrirModalComunidad()" class="w-full bg-white rounded-xl shadow-sm p-4 flex items-center gap-4 hover:bg-gray-50 transition">
+                        <div class="w-12 h-12 rounded-full bg-[#008069] flex items-center justify-center text-white text-xl shrink-0"><i class="fa fa-plus"></i></div>
+                        <span class="font-semibold text-gray-800">Nueva comunidad</span>
+                    </button>
+                </div>
+                <h3 class="text-xs font-semibold text-gray-400 px-4 pt-2 pb-1">TUS COMUNIDADES</h3>
+                <div id="comunidades-lista" class="px-3"></div>
+            </div>
+
+            <!-- LLAMADAS -->
+            <div id="pantalla-llamadas" class="absolute inset-0 overflow-y-auto hidden bg-white flex flex-col items-center justify-center text-center p-8">
+                <div class="w-24 h-24 rounded-full bg-[#e7f8f2] flex items-center justify-center text-[#008069] text-4xl mb-5"><i class="fa fa-phone"></i></div>
+                <h2 class="text-lg font-bold text-gray-900 mb-2">Llamadas</h2>
+                <p class="text-sm text-gray-500 mb-6">Las llamadas de voz y video llegarán próximamente.</p>
+                <p class="text-[11px] text-gray-400 mt-2">Mantenete atento/a a las actualizaciones ✨</p>
+            </div>
+
+            <!-- PERFIL -->
+            <div id="pantalla-perfil" class="absolute inset-0 overflow-y-auto hidden bg-[#f0f2f5]">
+                <div class="flex flex-col items-center pt-8 pb-6">
+                    <div class="relative group cursor-pointer w-40 h-40 rounded-full overflow-hidden bg-gray-300 flex items-center justify-center mb-3 border-4 border-white shadow-sm" onclick="document.getElementById('file-avatar').click()">
+                        <img id="perfil-avatar" class="w-full h-full object-cover hidden" src="">
+                        <i id="perfil-icono" class="fa fa-user text-white text-6xl pt-2"></i>
+                        <div class="absolute inset-0 bg-black bg-opacity-50 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition text-white text-xs gap-1.5 font-medium">
+                            <i class="fa fa-camera text-xl"></i><span>CAMBIAR FOTO</span>
+                        </div>
+                    </div>
+                    <input type="file" id="file-avatar" accept="image/*" class="hidden" onchange="subirAvatar(this)">
+                </div>
+                <div class="bg-white px-5 py-4 shadow-sm mb-2">
+                    <span class="text-xs text-[#008069] block mb-1 font-semibold">Tu Nombre</span>
+                    <div class="flex justify-between items-center">
+                        <span id="perfil-nombre" class="text-sm text-gray-800">...</span>
+                        <button onclick="openNameModal()" class="text-gray-500 text-sm"><i class="fa fa-pencil"></i></button>
+                    </div>
+                </div>
+                <div class="bg-white px-5 py-4 shadow-sm mb-2">
+                    <span class="text-xs text-[#008069] block mb-1 font-semibold">Tu usuario (para que te agreguen sin tu correo)</span>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-gray-800 font-medium">@<span id="perfil-usuario">...</span></span>
+                        <button onclick="copiarMiTag()" class="text-[#008069] text-sm" title="Copiar usuario"><i class="fa fa-copy"></i></button>
+                    </div>
+                </div>
+                <div class="bg-white px-5 py-4 shadow-sm mb-2">
+                    <span class="text-xs text-[#008069] block mb-1 font-semibold">Tu número de teléfono (opcional, también te pueden agregar por él)</span>
+                    <div class="flex justify-between items-center gap-2">
+                        <span id="perfil-telefono" class="text-sm text-gray-800 font-medium">Sin cargar</span>
+                        <button onclick="abrirModalTelefono()" class="text-[#008069] text-sm" title="Cargar teléfono"><i class="fa fa-pencil"></i></button>
+                    </div>
+                </div>
+                <div class="bg-white px-5 py-4 shadow-sm mb-2">
+                    <span class="text-xs text-[#008069] block mb-1 font-semibold">Tu correo</span>
+                    <div class="flex justify-between items-center">
+                        <span id="perfil-email" class="text-sm text-gray-800 font-medium">...</span>
+                        <button onclick="copiarMiCorreo()" class="text-[#008069] text-sm" title="Copiar correo"><i class="fa fa-copy"></i></button>
+                    </div>
+                </div>
+                <div class="bg-white px-5 py-4 shadow-sm">
+                    <span class="text-xs text-gray-500 block mb-1 font-semibold">Info.</span>
+                    <span class="text-sm text-gray-800">¡Hola! Estoy usando VYNIX. 🔒 Todo es privado: solo mis contactos me ven.</span>
+                </div>
+                <div class="p-4">
+                    <button onclick="cerrarSesion()" class="w-full py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl shadow text-sm">CERRAR SESIÓN</button>
+                </div>
+            </div>
+
+            <!-- BOTÓN FLOTANTE: agregar contacto (estilo WhatsApp) -->
+            <button id="fab-contacto" onclick="abrirModalContacto()" title="Agregar contacto" class="absolute bottom-5 right-4 w-14 h-14 rounded-full bg-[#00a884] text-white text-2xl shadow-xl flex items-center justify-center z-20 active:scale-95 transition">
+                <i class="fa fa-comment"></i>
+            </button>
+
+            <!-- VENTANA DE CHAT -->
+            <div id="chat-window" class="absolute inset-0 z-40 bg-[#efeae2] flex flex-col transition-transform duration-300 translate-x-full">
+                <header class="bg-[#f0f2f5] px-3 py-2.5 flex items-center justify-between border-b border-gray-200 shrink-0">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <button onclick="cerrarChat()" class="text-gray-600 text-lg px-1"><i class="fa fa-arrow-left"></i></button>
+                        <span id="chat-avatar" class="shrink-0"></span>
+                        <div class="min-w-0">
+                            <h2 id="chat-nombre" class="font-semibold text-gray-900 text-sm leading-tight truncate">Chat</h2>
+                            <p id="chat-subtitulo" class="text-[11px] text-[#25D366] font-medium truncate">En línea</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-4 text-gray-500 text-lg items-center pr-1 shrink-0">
+                        <button id="btn-llamada-video" onclick="llamar('video')" class="hidden"><i class="fa fa-video-camera"></i></button>
+                        <button id="btn-llamada-voz" onclick="llamar('voz')" class="hidden"><i class="fa fa-phone"></i></button>
+                        <button onclick="openVaciarModal()" class="text-red-500 text-xs font-bold">VACIAR</button>
+                    </div>
+                </header>
+                <div class="bg-[#fdf3c7] text-[#1c2e35] px-4 py-1.5 text-center text-[11px] border-b border-[#ebd7b2] shrink-0">
+                    <i class="fa fa-lock text-[9px]"></i> Los mensajes están cifrados de extremo a extremo. Solo los miembros de este chat pueden verlos.
+                </div>
+                <main id="chat-wall" class="flex-1 p-4 overflow-y-auto fondo-whatsapp flex flex-col gap-2.5"></main>
+
+                <!-- Footer: normal -->
+                <footer class="bg-[#f0f2f5] px-3 py-2.5 flex items-center gap-2 shrink-0">
+                    <div id="input-area" class="flex-1 bg-white rounded-full px-4 py-2 flex items-center gap-2 border border-gray-200">
+                        <input type="text" id="text-input" placeholder="Escribe un mensaje" class="flex-1 outline-none text-sm bg-transparent" oninput="toggleIcons()">
+                        <label for="file-msg" class="text-gray-500 text-xl cursor-pointer"><i class="fa fa-paperclip"></i></label>
+                        <input type="file" id="file-msg" accept="image/*" class="hidden" onchange="subirArchivoMsg(this)">
+                    </div>
+                    <!-- Barra de grabación estilo WhatsApp -->
+                    <div id="rec-bar" class="flex-1 bg-white rounded-full px-3 py-2 flex items-center gap-2 border border-gray-200" style="display:none;">
+                        <div class="w-7 h-7 rounded-full bg-red-500 text-white flex items-center justify-center text-xs shrink-0 recpulse"><i class="fa fa-microphone"></i></div>
+                        <span id="rec-timer" class="text-sm text-gray-700 font-mono shrink-0 w-9">0:00</span>
+                        <span id="rec-hint" class="text-xs text-gray-400 flex-1 text-center truncate">Desliza para cancelar</span>
+                        <i class="fa fa-chevron-left text-gray-300 text-xs"></i>
+                    </div>
+                    <button id="mainBtn" style="touch-action:none;"
+                        onpointerdown="pressStart(event)" oncontextmenu="return false;"
+                        class="w-10 h-10 bg-[#00a884] text-white rounded-full flex items-center justify-center text-lg shadow-md shrink-0">
+                        <i id="icon-mic" class="fa fa-microphone"></i>
+                        <i id="icon-send" class="fa fa-send hidden pl-0.5"></i>
+                    </button>
+                </footer>
+            </div>
+
+            <!-- DETALLE COMUNIDAD -->
+            <div id="pantalla-comunidad" class="absolute inset-0 z-40 bg-white flex flex-col transition-transform duration-300 translate-x-full">
+                <header class="bg-[#008069] text-white px-3 py-3 flex items-center gap-3 shrink-0">
+                    <button onclick="cerrarComunidad()" class="text-lg px-1"><i class="fa fa-arrow-left"></i></button>
+                    <h2 id="comunidad-titulo" class="font-semibold text-sm truncate">Comunidad</h2>
+                </header>
+                <div class="flex-1 overflow-y-auto bg-[#f0f2f5]">
+                    <div class="bg-white p-5 flex flex-col items-center text-center border-b border-gray-100">
+                        <div id="comunidad-avatar" class="w-24 h-24 rounded-2xl overflow-hidden bg-gray-200 flex items-center justify-center text-[#008069] text-4xl mb-3"></div>
+                        <h3 id="comunidad-nombre" class="font-bold text-gray-900 text-lg"></h3>
+                        <p id="comunidad-desc" class="text-xs text-gray-500 mt-1"></p>
+                        <p id="comunidad-miembros" class="text-[11px] text-[#008069] mt-1 font-medium"></p>
+                    </div>
+                    <div class="p-3">
+                        <button onclick="abrirModalGrupo(comunidadActualId)" class="w-full bg-white rounded-xl shadow-sm p-3.5 flex items-center gap-3 hover:bg-gray-50 transition mb-2">
+                            <div class="w-10 h-10 rounded-full bg-[#008069] flex items-center justify-center text-white shrink-0"><i class="fa fa-plus"></i></div>
+                            <span class="font-semibold text-gray-800 text-sm">Añadir grupo</span>
+                        </button>
+                        <h4 class="text-xs font-semibold text-gray-400 px-1 pt-2 pb-1">GRUPOS DE LA COMUNIDAD</h4>
+                        <div id="comunidad-grupos"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- NAVEGACIÓN INFERIOR -->
+        <nav class="bg-white border-t border-gray-200 flex justify-around items-center py-1.5 shrink-0 z-30">
+            <button id="nav-chats" onclick="mostrarPantalla('chats')" class="flex flex-col items-center gap-0.5 px-3 py-1 text-[#008069]"><i class="fa fa-comments text-xl"></i><span class="text-[10px] font-semibold">Chats</span></button>
+            <button id="nav-novedades" onclick="mostrarPantalla('novedades')" class="flex flex-col items-center gap-0.5 px-3 py-1 text-gray-400"><i class="fa fa-circle-o-notch text-xl"></i><span class="text-[10px]">Novedades</span></button>
+            <button id="nav-comunidades" onclick="mostrarPantalla('comunidades')" class="flex flex-col items-center gap-0.5 px-3 py-1 text-gray-400"><i class="fa fa-users text-xl"></i><span class="text-[10px]">Comunidades</span></button>
+            <button id="nav-llamadas" onclick="mostrarPantalla('llamadas')" class="flex flex-col items-center gap-0.5 px-3 py-1 text-gray-400"><i class="fa fa-phone text-xl"></i><span class="text-[10px]">Llamadas</span></button>
+            <button id="nav-perfil" onclick="mostrarPantalla('perfil')" class="flex flex-col items-center gap-0.5 px-3 py-1 text-gray-400"><i class="fa fa-user text-xl"></i><span class="text-[10px]">Tú</span></button>
+        </nav>
+    </div>
+
+    <!-- ============ MODALES ============ -->
+    <div id="modal-foto" class="fixed inset-0 bg-black bg-opacity-90 z-50 flex-col justify-center items-center hidden" onclick="cerrarFotoGrande()">
+        <header class="absolute top-0 w-full p-4 flex justify-between text-white bg-gradient-to-b from-black/60 to-transparent z-10">
+            <span id="foto-titulo" class="font-medium text-sm">Foto</span>
+            <button><i class="fa fa-times text-lg"></i></button>
+        </header>
+        <img id="foto-img" src="" class="max-w-[92vw] max-h-[78vh] object-contain rounded shadow-2xl" onclick="event.stopPropagation()">
+    </div>
+
+    <div id="modal-vaciar" class="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-center items-center hidden">
+        <div class="bg-white rounded-xl p-5 max-w-xs w-11/12 shadow-xl">
+            <h3 class="text-base font-semibold text-gray-900 mb-2">¿Borrar los mensajes?</h3>
+            <p class="text-xs text-gray-500 mb-5">Se limpiarán todos los mensajes de esta conversación para ambos.</p>
+            <div class="flex justify-end gap-3 text-xs font-bold">
+                <button onclick="closeModal('modal-vaciar')" class="px-3 py-2 text-gray-500 hover:bg-gray-100 rounded">CANCELAR</button>
+                <button onclick="confirmVaciarChat()" class="px-3 py-2 text-white bg-red-500 hover:bg-red-600 rounded">ACEPTAR</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-nombre" class="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-center items-center hidden">
+        <div class="bg-white rounded-xl p-5 max-w-xs w-11/12 shadow-xl">
+            <h3 class="text-base font-semibold text-gray-900 mb-1">Tu nombre</h3>
+            <input type="text" id="modal-name-input" class="w-full border-b-2 border-[#00a884] outline-none py-1 text-sm text-gray-800 mb-5" placeholder="Tu apodo...">
+            <div class="flex justify-end gap-3 text-xs font-bold">
+                <button onclick="closeModal('modal-nombre')" class="px-3 py-2 text-gray-500 hover:bg-gray-100 rounded">CANCELAR</button>
+                <button onclick="confirmSaveName()" class="px-3 py-2 text-white bg-[#00a884] hover:bg-[#008069] rounded">GUARDAR</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-telefono" class="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-center items-center hidden">
+        <div class="bg-white rounded-2xl p-5 max-w-xs w-11/12 shadow-xl">
+            <h3 class="text-base font-semibold text-gray-900 mb-1">Tu número de teléfono</h3>
+            <p class="text-[11px] text-gray-400 mb-3">Con código de país, solo números (ej: 5491122334455). Queda verificado en tu perfil.</p>
+            <input type="tel" id="tel-input" maxlength="18" inputmode="numeric" class="w-full border-b-2 border-[#00a884] outline-none py-1 text-sm text-gray-800 mb-4" placeholder="54911...">
+            <div class="flex justify-end gap-3 text-xs font-bold">
+                <button onclick="closeModal('modal-telefono')" class="px-3 py-2 text-gray-500 hover:bg-gray-100 rounded">CANCELAR</button>
+                <button onclick="guardarTelefono()" class="px-3 py-2 text-white bg-[#00a884] hover:bg-[#008069] rounded">GUARDAR</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-grupo" class="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-center items-center hidden">
+        <div class="bg-white rounded-2xl p-5 max-w-sm w-11/12 shadow-xl max-h-[85vh] flex flex-col">
+            <h3 id="grupo-modal-titulo" class="text-base font-semibold text-gray-900 mb-3">Nuevo grupo</h3>
+            <div class="flex items-center gap-3 mb-3">
+                <div id="grupo-foto-preview" class="w-14 h-14 rounded-full bg-gray-200 flex items-center justify-center text-gray-400 text-xl overflow-hidden shrink-0 cursor-pointer" onclick="document.getElementById('file-grupo').click()"><i class="fa fa-camera"></i></div>
+                <input type="file" id="file-grupo" accept="image/*" class="hidden" onchange="subirFotoGrupo(this)">
+                <input type="text" id="grupo-nombre-input" class="flex-1 border-b-2 border-[#00a884] outline-none py-1.5 text-sm" placeholder="Nombre del grupo">
+            </div>
+            <p class="text-xs font-semibold text-gray-400 mb-2">MIEMBROS (tus contactos)</p>
+            <div id="grupo-miembros-lista" class="flex-1 overflow-y-auto divide-y divide-gray-100 mb-4"></div>
+            <div class="flex justify-end gap-3 text-xs font-bold">
+                <button onclick="closeModal('modal-grupo')" class="px-3 py-2 text-gray-500 hover:bg-gray-100 rounded">CANCELAR</button>
+                <button onclick="confirmarCrearGrupo()" class="px-4 py-2 text-white bg-[#00a884] hover:bg-[#008069] rounded-full shadow"><i class="fa fa-check"></i> CREAR</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-comunidad" class="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-center items-center hidden">
+        <div class="bg-white rounded-2xl p-5 max-w-sm w-11/12 shadow-xl">
+            <h3 class="text-base font-semibold text-gray-900 mb-3">Nueva comunidad</h3>
+            <div id="comunidad-foto-preview" class="w-24 h-24 rounded-2xl bg-gray-200 flex items-center justify-center text-gray-400 text-2xl overflow-hidden mx-auto mb-3 cursor-pointer" onclick="document.getElementById('file-comunidad').click()"><i class="fa fa-users"></i></div>
+            <input type="file" id="file-comunidad" accept="image/*" class="hidden" onchange="subirFotoComunidad(this)">
+            <input type="text" id="comunidad-nombre-input" maxlength="100" class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm mb-3 outline-none focus:border-[#00a884]" placeholder="Nombre de la comunidad">
+            <textarea id="comunidad-desc-input" rows="3" maxlength="2048" class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm mb-4 outline-none focus:border-[#00a884] resize-none" placeholder="Descripción (opcional)"></textarea>
+            <div class="flex justify-end gap-3 text-xs font-bold">
+                <button onclick="closeModal('modal-comunidad')" class="px-3 py-2 text-gray-500 hover:bg-gray-100 rounded">CANCELAR</button>
+                <button onclick="confirmarCrearComunidad()" class="px-4 py-2 text-white bg-[#00a884] hover:bg-[#008069] rounded-full shadow"><i class="fa fa-arrow-right"></i> SIGUIENTE</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-contacto" class="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-center items-center hidden">
+        <div class="bg-white rounded-2xl p-5 max-w-sm w-11/12 shadow-xl">
+            <h3 class="text-base font-semibold text-gray-900 mb-3">Nuevo contacto</h3>
+            <input type="text" id="contacto-user-input" class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm mb-2 outline-none focus:border-[#00a884]" placeholder="@usuario de tu amigo/a  (opción 1)">
+            <p class="text-[11px] text-gray-400 mb-1">— o con su correo —</p>
+            <input type="email" id="contacto-email-input" class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm mb-2 outline-none focus:border-[#00a884]" placeholder="Correo de tu amigo/a  (opción 2)">
+            <p class="text-[11px] text-gray-400 mb-1">— o con su teléfono —</p>
+            <input type="tel" id="contacto-tel-input" maxlength="18" inputmode="numeric" class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm mb-2 outline-none focus:border-[#00a884]" placeholder="Teléfono con código de país  (opción 3)">
+            <p class="text-[11px] text-gray-400 mb-3">Completá <b>solo una</b> de las tres opciones. Tu amigo/a debe estar registrado; el contacto se agrega para ambos al instante.</p>
+            <div class="flex justify-end gap-3 text-xs font-bold">
+                <button onclick="closeModal('modal-contacto')" class="px-3 py-2 text-gray-500 hover:bg-gray-100 rounded">CANCELAR</button>
+                <button onclick="confirmarGuardarContacto()" class="px-4 py-2 text-white bg-[#00a884] hover:bg-[#008069] rounded-full shadow"><i class="fa fa-check"></i> AGREGAR</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-estado" class="fixed inset-0 bg-black bg-opacity-40 z-50 flex justify-center items-center hidden">
+        <div class="bg-white rounded-2xl p-5 max-w-sm w-11/12 shadow-xl">
+            <h3 class="text-base font-semibold text-gray-900 mb-3">Mi estado</h3>
+            <textarea id="estado-texto-input" rows="3" maxlength="300" class="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm mb-3 outline-none focus:border-[#00a884] resize-none" placeholder="Escribe algo..."></textarea>
+            <div id="estado-medios-preview" class="hidden mb-3 flex gap-2 overflow-x-auto"></div>
+            <p id="estado-musica-nombre" class="hidden text-[11px] text-green-600 mb-3"><i class="fa fa-music"></i> <span></span></p>
+            <div class="flex items-center gap-5 mb-4">
+                <label for="file-estado" class="text-gray-500 text-xl cursor-pointer"><i class="fa fa-image"></i> <span class="text-xs">Fotos / videos</span></label>
+                <input type="file" id="file-estado" accept="image/*,video/*" multiple class="hidden" onchange="prepararMediosEstado(this)">
+                <label for="audio-estado" class="text-gray-500 text-xl cursor-pointer"><i class="fa fa-music"></i> <span class="text-xs">Música</span></label>
+                <input type="file" id="audio-estado" accept="audio/*" class="hidden" onchange="subirMusicaEstado(this)">
+            </div>
+            <div class="flex justify-end gap-3 text-xs font-bold">
+                <button onclick="closeModal('modal-estado')" class="px-3 py-2 text-gray-500 hover:bg-gray-100 rounded">CANCELAR</button>
+                <button onclick="publicarEstado()" class="px-4 py-2 text-white bg-[#00a884] hover:bg-[#008069] rounded-full shadow"><i class="fa fa-check"></i> PUBLICAR</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-estado-ver" class="fixed inset-0 bg-black z-50 hidden flex-col">
+        <header class="absolute top-0 w-full p-4 flex items-center gap-3 text-white bg-gradient-to-b from-black/70 to-transparent z-10">
+            <span id="estado-ver-avatar"></span>
+            <div class="flex-1">
+                <p id="estado-ver-nombre" class="font-semibold text-sm"></p>
+                <p id="estado-ver-hora" class="text-[11px] text-gray-300"></p>
+            </div>
+            <button onclick="event.stopPropagation(); estadoAnterior()" title="Anterior" class="text-white/80 hover:text-white text-lg px-2"><i class="fa fa-chevron-left"></i></button>
+            <button onclick="siguienteEstado()" title="Siguiente" class="text-white/80 hover:text-white text-lg px-2"><i class="fa fa-chevron-right"></i></button>
+            <button onclick="cerrarVerEstado()"><i class="fa fa-times text-lg"></i></button>
+        </header>
+        <div class="flex-1 flex items-center justify-center p-6 flex-col" id="estado-ver-contenido" onclick="siguienteEstado(event)"></div>
+    </div>
+
+    <!-- PANTALLA DE LLAMADA (voz / video) -->
+    <div id="pantalla-llamada" class="fixed inset-0 z-50 hidden flex-col items-center justify-between py-16 px-6 fondo-app overflow-hidden">
+        <video id="llamada-remoto" autoplay playsinline class="absolute inset-0 w-full h-full object-cover hidden"></video>
+        <video id="llamada-video" autoplay muted playsinline class="absolute top-5 right-5 w-24 h-36 rounded-xl object-cover hidden shadow-2xl z-20"></video>
+        <div class="absolute inset-0" style="background:rgba(0,0,0,.30);"></div>
+        <div class="relative z-10"></div>
+        <div id="llamada-centro" class="text-center relative z-10 transition-opacity duration-500">
+            <div id="llamada-avatar" class="w-36 h-36 rounded-full overflow-hidden mx-auto mb-5 border-4 border-white/20 shadow-2xl flex items-center justify-center bg-gray-700 text-white text-5xl"></div>
+            <h2 id="llamada-nombre" class="text-white text-2xl font-semibold"></h2>
+            <p id="llamada-estado" class="text-gray-200 text-sm mt-2">Llamando...</p>
+        </div>
+        <div id="llamada-barra-entrante" class="relative z-10 hidden items-center gap-3 flex-wrap justify-center px-2">
+            <button onclick="toggleCallBtn(this); toggleMic();" title="Mute" class="w-12 h-12 rounded-full bg-white/10 text-white text-lg flex items-center justify-center transition"><i class="fa fa-microphone"></i></button>
+            <button onclick="toggleCallBtn(this)" title="Altavoz" class="w-12 h-12 rounded-full bg-white/10 text-white text-lg flex items-center justify-center transition"><i class="fa fa-volume-up"></i></button>
+            <button onclick="toggleCallBtn(this); toggleCam();" title="Cámara" class="w-12 h-12 rounded-full bg-white/10 text-white text-lg flex items-center justify-center transition"><i class="fa fa-video-camera"></i></button>
+            <button onclick="rechazarLlamada()" class="w-16 h-16 rounded-full bg-red-500 text-white text-2xl flex items-center justify-center shadow-lg"><i class="fa fa-phone" style="transform:rotate(135deg);"></i></button>
+            <button onclick="contestarLlamada()" class="w-16 h-16 rounded-full bg-green-500 text-white text-2xl flex items-center justify-center shadow-lg"><i class="fa fa-phone"></i></button>
+        </div>
+        <div id="llamada-barra-curso" class="relative z-10 flex items-center gap-5">
+            <button id="btn-call-mic" onclick="toggleCallBtn(this); toggleMic();" class="w-14 h-14 rounded-full bg-white/10 text-white text-xl flex items-center justify-center transition"><i class="fa fa-microphone"></i></button>
+            <button onclick="toggleCallBtn(this)" class="w-14 h-14 rounded-full bg-white/10 text-white text-xl flex items-center justify-center transition"><i class="fa fa-volume-up"></i></button>
+            <button id="btn-call-cam" onclick="toggleCallBtn(this); toggleCam();" class="w-14 h-14 rounded-full bg-white/10 text-white text-xl flex items-center justify-center transition"><i class="fa fa-video-camera"></i></button>
+            <button onclick="colgar()" class="w-16 h-16 rounded-full bg-red-500 text-white text-2xl flex items-center justify-center shadow-lg"><i class="fa fa-phone" style="transform:rotate(135deg);"></i></button>
+        </div>
+    </div>
+
+    <script>
+        // ================= CONFIG =================
+        const firebaseConfig = {
+            apiKey: "AIzaSyBYPeycTO2i-OGwJzq9lPTuUjz0Qdl7w6o",
+            authDomain: "cinechat-syvz8.firebaseapp.com",
+            databaseURL: "https://cinechat-syvz8-default-rtdb.firebaseio.com",
+            projectId: "cinechat-syvz8",
+            storageBucket: "cinechat-syvz8.firebasestorage.app",
+            messagingSenderId: "819636295790",
+            appId: "1:819636295790:web:1c42e05454dff4365f6e7f"
+        };
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // ===== ENVÍO DE CORREOS (EmailJS) — pegá tus 3 valores aquí =====
+        const EMAILJS_PUBLIC_KEY = "iAymS1bGQGrQFvKWJ";
+        const EMAILJS_SERVICE_ID = "service_rpczab8";
+        const EMAILJS_TEMPLATE_ID = "template_sye17ev";
+        if (EMAILJS_PUBLIC_KEY !== "TU_PUBLIC_KEY" && window.emailjs) {
+            emailjs.init(EMAILJS_PUBLIC_KEY);
+        }
+
+        const CLOUD_NAME = "ddj1ctax2";
+        const UPLOAD_PRESET = "voces_chat";
+        const DEFAULT_AVATAR = "https://upload.wikimedia.org/wikipedia/commons/7/7c/Profile_avatar_placeholder_large.png";
+        const DIA_MS = 24 * 60 * 60 * 1000;
+
+        let MI_ID = "", userRef = null;
+        let emailActual = "", nombreActual = "";
+        let codigoVerificacionEnviado = {};
+        let yaEntre = false;
+
+        let listaUsuarios = {}, listaGrupos = {}, listaComunidades = {}, listaEstados = {}, miAgenda = {};
+        let ultimosMensajes = {};
+        const listenersUltMsg = {}, listenersGrupos = {}, listenersComunidades = {}, listenersEstados = {};
+
+        let CHAT_ACTUAL_ID = "", CHAT_ES_GRUPO = false, CHAT_OTRO_UID = null;
+        let pinActual = "", telActual = "";
+        let mensajesListenerRef = null, comunidadActualId = null;
+        let _fotoGrupoUrl = "", _fotoComunidadUrl = "", _fotoEstadoUrl = "", _grupoComunidadId = null;
+        let colaEstados = [], idxEstado = 0;
+
+        // ================= LOGIN + AUTH =================
+        function mostrarEstadoEnvio(txt) {
+            document.getElementById('login-envio-status').innerText = txt;
+        }
+
+        function enviarCodigoVerificacion() {
+            const valor = document.getElementById('login-email-input').value.trim();
+            if (valor === "") { alert("Ingresá tu correo o tu número de teléfono."); return; }
+            const esTel = (valor.indexOf('@') === -1) && /^\+?[0-9\s\-]{6,20}$/.test(valor);
+            if (!esTel && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor)) { alert("Ingresá un correo válido o un número de teléfono con código de país."); return; }
+
+            const pasoYEnviar = function(emailDestino) {
+                const codigo = Math.floor(100000 + Math.random() * 900000).toString();
+                codigoVerificacionEnviado[emailDestino] = codigo;
+                emailActual = emailDestino;
+                document.getElementById('login-email-input').classList.add('hidden');
+                document.getElementById('login-name-input').classList.remove('hidden');
+                document.getElementById('login-code-input').classList.remove('hidden');
+                const btn = document.getElementById('login-btn');
+                btn.innerText = "VERIFICAR E INGRESAR";
+                btn.onclick = verificarCodigoEIngresar;
+                setTimeout(function() { document.getElementById('login-code-input').focus(); }, 100);
+                if (EMAILJS_PUBLIC_KEY === "TU_PUBLIC_KEY") { mostrarEstadoEnvio("⚠️ MODO PRUEBA — tu código es: " + codigo); return; }
+                mostrarEstadoEnvio("📧 Enviando código a " + emailDestino + "...");
+                emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, { to_email: emailDestino, passcode: codigo, app_name: "VYNIX" })
+                    .then(function() { mostrarEstadoEnvio("✅ ¡Código enviado! Revisá tu correo (y la carpeta de spam)."); })
+                    .catch(function(err) {
+                        console.error(err);
+                        let detalle = "";
+                        if (err && err.text) detalle = ' — El servidor dice: "' + err.text + '"';
+                        mostrarEstadoEnvio("❌ No se pudo enviar el correo." + detalle + " — MODO PRUEBA, tu código es: " + codigo);
+                    });
+            };
+
+            if (!esTel) { pasoYEnviar(valor.toLowerCase()); return; }
+
+            // Teléfono: buscamos a quién pertenece y mandamos el código a SU correo registrado
+            const digits = valor.replace(/\D/g, '');
+            db.ref('phones/' + digits).once('value').then(function(s) {
+                const uid = s.val();
+                if (!uid) { alert("Ese número todavía no está registrado en VYNIX.\n\nRegistrate primero con tu correo y cargá tu teléfono en tu perfil (pestaña Tú)."); return; }
+                db.ref('usuarios_chat/' + uid + '/email').once('value').then(function(se) {
+                    const em = se.val();
+                    if (!em) { alert("Ese número no tiene un correo vinculado todavía. Entrá una vez con tu correo para vincularlo."); return; }
+                    mostrarEstadoEnvio("📱 Número encontrado. Enviando código a tu correo...");
+                    pasoYEnviar(String(em).toLowerCase());
+                });
+            }).catch(function(e) { alert("Error: " + e.message); });
+        }
+
+        function verificarCodigoEIngresar() {
+            const codigo = document.getElementById('login-code-input').value.trim();
+            const nombre = document.getElementById('login-name-input').value.trim();
+            if (codigo === "") { alert("Ingresa el código."); return; }
+            if (nombre === "") { alert("Ingresa tu nombre."); return; }
+            if (codigoVerificacionEnviado[emailActual] !== codigo) { alert("Código incorrecto."); return; }
+            nombreActual = nombre;
+            const btn = document.getElementById('login-btn');
+            btn.disabled = true;
+            btn.innerText = "CONECTANDO...";
+            // MODO RÁPIDO: entrar directo, sin Firebase Auth.
+            // Funciona en cualquier dominio sin configuración previa.
+            const uid = 'user_' + emailActual.replace(/[^a-zA-Z0-9]/g, '_');
+            setTimeout(function() { ingresarAlChat(uid); }, 50);
+        }
+
+        // SESIÓN FIRME (como WhatsApp): si ya entraste, entrás DIRECTO.
+        // Solo ves el login si tocás CERRAR SESIÓN en tu perfil.
+        if (localStorage.getItem('wplus')) {
+            try {
+                const p = JSON.parse(localStorage.getItem('wplus'));
+                if (p && p.email && p.nombre) {
+                    emailActual = p.email; nombreActual = p.nombre;
+                    ingresarAlChat('user_' + emailActual.replace(/[^a-zA-Z0-9]/g, '_'));
+                }
+            } catch (e) {}
+        }
+
+        function ingresarAlChat(uid) {
+            if (yaEntre) return;
+            yaEntre = true;
+            MI_ID = uid;
+            userRef = db.ref('usuarios_chat/' + MI_ID);
+            const key = emailActual.replace(/[^a-zA-Z0-9]/g, '_');
+
+            db.ref('emails/' + key).once('value').then(function(s) {
+                if (s.exists() && s.val() !== MI_ID) {
+                    alert("Este correo ya está vinculado a otro dispositivo.\nEntra desde el mismo navegador donde te registraste.");
+                    firebase.auth().signOut(); yaEntre = false; return;
+                }
+                const upd = {};
+                if (!s.exists()) {
+                    upd['usuarios_chat/' + MI_ID] = { nombre: nombreActual, foto: "", estado: "En línea", email: emailActual };
+                    upd['emails/' + key] = MI_ID;
+                } else {
+                    // usuario existente: solo actualizamos datos básicos, JAMÁS pisamos foto/usuario/teléfono
+                    upd['usuarios_chat/' + MI_ID + '/estado'] = "En línea";
+                    upd['usuarios_chat/' + MI_ID + '/email'] = emailActual;
+                    upd['usuarios_chat/' + MI_ID + '/nombre'] = nombreActual;
+                }
+                return db.ref().update(upd);
+            }).then(function(r) {
+                if (r === undefined && !yaEntre) return;
+                if (!document.getElementById('login-screen').classList.contains('hidden') || true) {
+                    localStorage.setItem('wplus', JSON.stringify({ email: emailActual, nombre: nombreActual }));
+                    document.getElementById('login-screen').classList.add('hidden');
+                    const app = document.getElementById('app');
+                    app.classList.remove('hidden');
+                    app.style.display = 'flex';
+                    document.getElementById('perfil-email').innerText = emailActual;
+                    initSync();
+                }
+            }).catch(function(e) {
+                console.error(e);
+                yaEntre = false;
+                const btn = document.getElementById('login-btn');
+                if (btn) { btn.disabled = false; btn.innerText = "VERIFICAR E INGRESAR"; }
+                if (e.code === "PERMISSION_DENIED") {
+                    alert("⚠️ Firebase está bloqueando el acceso. Tenés dos opciones:\n\nA) MODO RÁPIDO: en Realtime Database → Reglas poné:\n{ \".read\": true, \".write\": true }\n\nB) PRIVACIDAD MÁXIMA: seguí los 3 pasos escritos al inicio de este archivo.");
+                } else {
+                    alert("Error al registrar: " + e.message);
+                }
+            });
+        }
+
+        // ================= SYNC =================
+        function initSync() {
+            db.ref('usuarios_chat').on('value', function(s) {
+                listaUsuarios = s.val() || {};
+                actualizarMiPerfil();
+                renderListaChats();
+                renderNovedades();
+            });
+            db.ref('misGrupos/' + MI_ID).on('value', function(s) {
+                const gids = s.val() || {};
+                Object.keys(gids).forEach(attachGrupoListener);
+                renderListaChats();
+            });
+            db.ref('misComunidades/' + MI_ID).on('value', function(s) {
+                const cids = s.val() || {};
+                Object.keys(cids).forEach(function(cid) {
+                    if (listenersComunidades[cid]) return;
+                    listenersComunidades[cid] = true;
+                    db.ref('comunidades/' + cid).on('value', function(s2) {
+                        const v = s2.val();
+                        if (v) listaComunidades[cid] = v; else delete listaComunidades[cid];
+                        renderComunidades();
+                    });
+                });
+                renderComunidades();
+            });
+            db.ref('agenda/' + MI_ID).on('value', function(s) {
+                miAgenda = s.val() || {};
+                sincronizarEstados();
+                renderListaChats();
+                renderNovedades();
+            });
+            escucharLlamadasEntrantes();
+            db.ref('.info/connected').on('value', function(s) {
+                if (s.val() && userRef) {
+                    userRef.update({ estado: "En línea" });
+                    userRef.child('estado').onDisconnect().set("Últ. vez hoy a las " + new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}));
+                }
+            });
+        }
+
+        function attachGrupoListener(gid) {
+            if (listenersGrupos[gid]) return;
+            listenersGrupos[gid] = true;
+            db.ref('grupos/' + gid).on('value', function(s) {
+                const v = s.val();
+                if (v) listaGrupos[gid] = v; else delete listaGrupos[gid];
+                renderListaChats();
+                if (comunidadActualId) renderDetalleComunidad(comunidadActualId);
+            });
+        }
+
+        function sincronizarEstados() {
+            const ids = Object.keys(miAgenda); ids.push(MI_ID);
+            ids.forEach(function(uid) {
+                if (listenersEstados[uid]) return;
+                listenersEstados[uid] = true;
+                db.ref('estados/' + uid).on('value', function(s) {
+                    const v = s.val();
+                    if (v) listaEstados[uid] = v; else delete listaEstados[uid];
+                    renderNovedades();
+                });
+            });
+        }
+
+        function actualizarMiPerfil() {
+            const mio = listaUsuarios[MI_ID];
+            if (!mio) return;
+            nombreActual = mio.nombre || nombreActual;
+            document.getElementById('perfil-nombre').innerText = nombreActual;
+            if (mio.usuario) document.getElementById('perfil-usuario').innerText = mio.usuario;
+            if (mio.telefono) {
+                telActual = mio.telefono;
+                document.getElementById('perfil-telefono').innerHTML = '+' + mio.telefono + ' <i class="fa fa-check-circle text-[#00a884]" title="Verificado"></i>';
+            }
+            if (!mio.usuario) asegurarIdentificador();
+            const img = document.getElementById('perfil-avatar');
+            const icono = document.getElementById('perfil-icono');
+            if (mio.foto) { img.src = mio.foto; img.classList.remove('hidden'); icono.classList.add('hidden'); }
+            else { img.classList.add('hidden'); icono.classList.remove('hidden'); }
+        }
+
+        // ================= NAVEGACIÓN =================
+        function mostrarPantalla(p) {
+            ['chats','novedades','comunidades','llamadas','perfil'].forEach(function(s) {
+                document.getElementById('pantalla-' + s).classList.toggle('hidden', s !== p);
+                const btn = document.getElementById('nav-' + s);
+                const activo = (s === p);
+                btn.classList.toggle('text-[#008069]', activo);
+                btn.classList.toggle('text-gray-400', !activo);
+                btn.querySelector('span').classList.toggle('font-semibold', activo);
+            });
+            document.getElementById('fab-contacto').classList.toggle('hidden', p !== 'chats');
+            document.getElementById('menu-dropdown').classList.add('hidden');
+        }
+        function toggleMenu() { document.getElementById('menu-dropdown').classList.toggle('hidden'); }
+
+        // ================= LISTA DE CHATS (solo contactos) =================
+        function suscribirUltimoMensaje(convId) {
+            if (listenersUltMsg[convId]) return;
+            listenersUltMsg[convId] = true;
+            db.ref('conversaciones/' + convId + '/mensajes').limitToLast(1).on('value', function(s) {
+                const v = s.val();
+                const m = v ? Object.values(v)[0] : null;
+                ultimosMensajes[convId] = m;
+                if (m && m.usuario !== MI_ID && !m.entregado) {
+                    Object.keys(v).forEach(function(k) {
+                        if (v[k].usuario !== MI_ID && !v[k].entregado) {
+                            db.ref('conversaciones/' + convId + '/mensajes/' + k + '/entregado').set(true);
+                        }
+                    });
+                }
+                renderListaChats();
+            });
+        }
+        function snippetDe(convId, fallback) {
+            const m = ultimosMensajes[convId];
+            if (!m) return fallback;
+            if (m.tipo === 'texto') return escapeHTML((m.contenido || '').slice(0, 40));
+            if (m.tipo === 'foto') return "📷 Foto";
+            if (m.tipo === 'audio') return "🎤 Audio";
+            return fallback;
+        }
+        function horaDe(convId) {
+            const m = ultimosMensajes[convId];
+            if (!m) return '';
+            const hoy = new Date().toLocaleDateString('es-AR');
+            if (m.fecha && m.fecha !== hoy) return m.fecha;
+            return m.hora || '';
+        }
+
+        function crearItemChat(opc) {
+            const div = document.createElement('div');
+            div.className = 'flex items-center gap-3 px-4 py-3 hover:bg-gray-100 cursor-pointer transition';
+            div.innerHTML =
+                '<div class="relative shrink-0">' + opc.avatar + '</div>' +
+                '<div class="flex-1 min-w-0">' +
+                    '<div class="flex justify-between items-baseline">' +
+                        '<h4 class="text-[15px] font-semibold text-gray-900 truncate">' + escapeHTML(opc.nombre) + '</h4>' +
+                        (opc.hora ? '<span class="text-[11px] text-gray-400 shrink-0 ml-2">' + opc.hora + '</span>' : '') +
+                    '</div>' +
+                    '<p class="text-[13px] text-gray-500 truncate">' + opc.subtitulo + '</p>' +
+                '</div>';
+            div.onclick = opc.onclick;
+            return div;
+        }
+
+        function renderListaChats() {
+            const cont = document.getElementById('chats-list');
+            if (!cont) return;
+            cont.innerHTML = '';
+            const filtro = (document.getElementById('buscador-chats').value || '').toLowerCase().trim();
+
+            // Solo MIS CONTACTOS (privacidad total)
+            Object.keys(miAgenda).forEach(function(id) {
+                const entry = miAgenda[id];
+                const u = listaUsuarios[id];
+                if (!entry || !entry.chatId || !u) return;
+                if (filtro && !(u.nombre || '').toLowerCase().includes(filtro)) return;
+                suscribirUltimoMensaje(entry.chatId);
+                const foto = u.foto || DEFAULT_AVATAR;
+                const online = u.estado === 'En línea';
+                cont.appendChild(crearItemChat({
+                    nombre: u.nombre || 'Usuario',
+                    avatar: '<img src="' + foto + '" class="w-12 h-12 rounded-full object-cover"><div class="absolute bottom-0 right-0 w-3.5 h-3.5 ' + (online ? 'bg-green-500' : 'bg-gray-400') + ' border-2 border-white rounded-full"></div>',
+                    subtitulo: snippetDe(entry.chatId, escapeHTML(u.estado || '')),
+                    hora: horaDe(entry.chatId),
+                    onclick: function() { abrirChat(entry.chatId, u.nombre || 'Usuario', '<img src="' + foto + '" class="w-9 h-9 rounded-full object-cover">', u.estado || '', false, id); }
+                }));
+            });
+
+            // Mis grupos
+            Object.keys(listaGrupos).forEach(function(gid) {
+                const g = listaGrupos[gid];
+                if (!g.miembros || !g.miembros[MI_ID]) return;
+                if (filtro && !(g.nombre || '').toLowerCase().includes(filtro)) return;
+                suscribirUltimoMensaje(gid);
+                const avatar = g.foto
+                    ? '<img src="' + g.foto + '" class="w-12 h-12 rounded-full object-cover">'
+                    : '<div class="w-12 h-12 rounded-full bg-[#8696a0] flex items-center justify-center text-white text-xl"><i class="fa fa-users"></i></div>';
+                const num = Object.keys(g.miembros).length;
+                cont.appendChild(crearItemChat({
+                    nombre: g.nombre || 'Grupo',
+                    avatar: avatar,
+                    subtitulo: snippetDe(gid, num + ' miembros'),
+                    hora: horaDe(gid),
+                    onclick: function() { abrirChat(gid, g.nombre || 'Grupo', avatarMiniGrupo(g), num + ' miembros', true); }
+                }));
+            });
+
+            if (cont.children.length === 0) {
+                cont.innerHTML = '<div class="text-center py-16 px-10">' +
+                    '<div class="w-20 h-20 rounded-full bg-[#e7f8f2] flex items-center justify-center text-[#008069] text-3xl mx-auto mb-4"><i class="fa fa-comment-o"></i></div>' +
+                    '<h3 class="font-bold text-gray-800 mb-1">Sin chats todavía</h3>' +
+                    '<p class="text-xs text-gray-500 leading-relaxed">Toca el menú (⋮) → <b>Nuevo contacto</b>, escribe el correo de tu amigo/a y listo. Todo es privado: nadie más ve tus chats ni tus contactos.</p></div>';
+            }
+        }
+
+        function avatarMiniGrupo(g) {
+            return g.foto
+                ? '<img src="' + g.foto + '" class="w-9 h-9 rounded-full object-cover">'
+                : '<div class="w-9 h-9 rounded-full bg-[#8696a0] flex items-center justify-center text-white"><i class="fa fa-users"></i></div>';
+        }
+
+        // ================= CHAT =================
+        function abrirChat(id, nombre, avatarHTML, subtitulo, esGrupo, otroUid) {
+            CHAT_ACTUAL_ID = id; CHAT_ES_GRUPO = esGrupo;
+            CHAT_OTRO_UID = esGrupo ? null : (otroUid || null);
+            document.getElementById('chat-nombre').innerText = nombre;
+            document.getElementById('chat-avatar').innerHTML = avatarHTML;
+            const sub = document.getElementById('chat-subtitulo');
+            sub.innerText = subtitulo || '';
+            sub.className = 'text-[11px] truncate ' + (subtitulo === 'En línea' ? 'text-[#25D366] font-medium' : 'text-gray-500');
+            document.getElementById('btn-llamada-voz').classList.toggle('hidden', esGrupo);
+            document.getElementById('btn-llamada-video').classList.toggle('hidden', esGrupo);
+
+            if (mensajesListenerRef) mensajesListenerRef.off();
+            mensajesListenerRef = db.ref('conversaciones/' + CHAT_ACTUAL_ID + '/mensajes');
+            mensajesListenerRef.on('value', function(s) {
+                const v = s.val() || {};
+                marcarLlegadas(v);
+                renderizarMensajes(v);
+            });
+            document.getElementById('chat-window').classList.remove('translate-x-full');
+        }
+
+        function cerrarChat() {
+            document.getElementById('chat-window').classList.add('translate-x-full');
+            if (mensajesListenerRef) { mensajesListenerRef.off(); mensajesListenerRef = null; }
+        }
+
+        function renderizarMensajes(mensajes) {
+            const wall = document.getElementById('chat-wall');
+            const estabaAbajo = wall.scrollHeight - wall.scrollTop <= wall.clientHeight + 120;
+            wall.innerHTML = '';
+            Object.values(mensajes).forEach(function(d) {
+                const esMio = d.usuario === MI_ID;
+                const wrapper = document.createElement('div');
+                wrapper.className = esMio ? 'flex justify-end mb-1' : 'flex justify-start gap-2 items-start mb-1';
+                if (!esMio) {
+                    const foto = (listaUsuarios[d.usuario] && listaUsuarios[d.usuario].foto) || DEFAULT_AVATAR;
+                    const av = document.createElement('img');
+                    av.src = foto;
+                    av.className = 'w-7 h-7 rounded-full object-cover shrink-0 mt-0.5 border border-gray-300 cursor-pointer';
+                    av.onclick = function() { verFotoGrande(foto, d.remitente || 'Usuario'); };
+                    wrapper.appendChild(av);
+                }
+                const bubble = document.createElement('div');
+                bubble.className = esMio ? 'burbuja-mio px-3 py-1.5 max-w-[75%] relative' : 'burbuja-otro px-3 py-1.5 max-w-[75%] relative';
+                let html = '';
+                if (!esMio && CHAT_ES_GRUPO) {
+                    html += '<p class="text-[11.5px] text-blue-600 font-bold leading-none mb-1">' + escapeHTML(d.remitente || 'Invitado') + '</p>';
+                }
+                if (d.tipo === 'texto') html += '<p class="text-[13.5px] text-gray-900 break-words pr-14">' + escapeHTML(d.contenido || '') + '</p>';
+                else if (d.tipo === 'foto') html += '<img src="' + d.url + '" class="max-w-full rounded max-h-60 object-cover cursor-pointer mb-1" onclick="verFotoGrande(\'' + d.url + '\', \'Foto\')">';
+                bubble.innerHTML = html;
+                if (d.tipo === 'audio') bubble.appendChild(crearAudioPlayer(d.url));
+                // Tildes estilo WhatsApp: gris 1 (enviado), gris 2 (entregado), azul 2 (leído)
+                let tildes = '';
+                if (esMio) {
+                    if (d.leido) tildes = ' <i class="fa fa-check-double text-[#53bdeb] text-[12px]"></i>';
+                    else if (d.entregado) tildes = ' <i class="fa fa-check-double text-gray-400 text-[12px]"></i>';
+                    else tildes = ' <i class="fa fa-check text-gray-400 text-[12px]"></i>';
+                }
+                const meta = document.createElement('span');
+                meta.className = (d.tipo === 'audio')
+                    ? 'flex justify-end items-center gap-1 mt-0.5 text-[10px] text-gray-500'
+                    : 'absolute bottom-1 right-2 text-[10px] text-gray-500 flex items-center gap-0.5';
+                const hoyStr = new Date().toLocaleDateString('es-AR');
+                const horaTxt = (d.fecha && d.fecha !== hoyStr) ? (d.fecha + ' ' + (d.hora || '')) : (d.hora || '');
+                meta.innerHTML = horaTxt + tildes;
+                bubble.appendChild(meta);
+                wrapper.appendChild(bubble);
+                wall.appendChild(wrapper);
+            });
+            if (estabaAbajo) wall.scrollTop = wall.scrollHeight;
+        }
+
+        function enviarMensaje(data) {
+            data.usuario = MI_ID;
+            data.remitente = nombreActual;
+            data.hora = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+            data.fecha = new Date().toLocaleDateString('es-AR');
+            data.ts = firebase.database.ServerValue.TIMESTAMP;
+            db.ref('conversaciones/' + CHAT_ACTUAL_ID + '/mensajes').push(data);
+        }
+
+        // Marca mensajes ajenos como ENTREGADOS y, si el chat está abierto, LEÍDOS
+        function marcarLlegadas(mensajes) {
+            const upd = {};
+            Object.keys(mensajes).forEach(function(k) {
+                const d = mensajes[k];
+                if (d.usuario === MI_ID) return;
+                if (!d.leido) { upd[k + '/leido'] = true; upd[k + '/entregado'] = true; }
+                else if (!d.entregado) { upd[k + '/entregado'] = true; }
+            });
+            if (Object.keys(upd).length) db.ref('conversaciones/' + CHAT_ACTUAL_ID + '/mensajes').update(upd);
+        }
+
+        // ---- REPRODUCTOR DE AUDIO ESTILO WHATSAPP ----
+        let currentAudio = null, currentAudioBtn = null;
+        function fmtAudio(s) {
+            if (!s || isNaN(s)) return '0:00';
+            return Math.floor(s / 60) + ':' + ('0' + Math.floor(s % 60)).slice(-2);
+        }
+        function crearAudioPlayer(url) {
+            const wrap = document.createElement('div');
+            wrap.className = 'flex items-center gap-2 min-w-[190px] pr-8';
+            wrap.innerHTML =
+                '<button class="audio-play w-9 h-9 rounded-full bg-[#00a884] text-white flex items-center justify-center shrink-0 shadow"><i class="fa fa-play text-[11px] pl-0.5"></i></button>' +
+                '<div class="flex-1">' +
+                    '<div class="h-1.5 bg-black/10 rounded-full overflow-hidden"><div class="audio-prog h-full w-0 bg-[#00a884] rounded-full"></div></div>' +
+                    '<div class="flex justify-between mt-0.5"><span class="audio-cur text-[10px] text-gray-500">0:00</span><span class="audio-dur text-[10px] text-gray-500">0:00</span></div>' +
+                '</div>';
+            const audio = new Audio(url);
+            const btn = wrap.querySelector('.audio-play');
+            const prog = wrap.querySelector('.audio-prog');
+            const cur = wrap.querySelector('.audio-cur');
+            const dur = wrap.querySelector('.audio-dur');
+            audio.addEventListener('loadedmetadata', function() { dur.innerText = fmtAudio(audio.duration); });
+            audio.addEventListener('timeupdate', function() {
+                if (audio.duration) prog.style.width = (audio.currentTime / audio.duration * 100) + '%';
+                cur.innerText = fmtAudio(audio.currentTime);
+            });
+            audio.addEventListener('ended', function() {
+                btn.innerHTML = '<i class="fa fa-play text-[11px] pl-0.5"></i>';
+                prog.style.width = '0%';
+                if (currentAudio === audio) { currentAudio = null; currentAudioBtn = null; }
+            });
+            btn.onclick = function(e) {
+                e.stopPropagation();
+                if (audio.paused) {
+                    if (currentAudio && currentAudio !== audio) { currentAudio.pause(); if (currentAudioBtn) currentAudioBtn.innerHTML = '<i class="fa fa-play text-[11px] pl-0.5"></i>'; }
+                    audio.play();
+                    currentAudio = audio; currentAudioBtn = btn;
+                    btn.innerHTML = '<i class="fa fa-pause text-[11px]"></i>';
+                } else {
+                    audio.pause();
+                    btn.innerHTML = '<i class="fa fa-play text-[11px] pl-0.5"></i>';
+                }
+            };
+            return wrap;
+        }
+
+        // ---- GRABACIÓN DE AUDIO ESTILO WHATSAPP ----
+        let recorder = null, chunks = [], grabando = false, cancelada = false;
+        let startX = 0, recInterval = null, recSeg = 0, lastPress = 0;
+
+        function pressStart(e) {
+            if (Date.now() - lastPress < 350) return;
+            lastPress = Date.now();
+            e.preventDefault();
+            if (document.getElementById('text-input').value.trim() !== "") { enviarTexto(); return; }
+            iniciarGrabacion(e);
+        }
+        function pressMove(e) {
+            if (!grabando) return;
+            const x = e.clientX || 0;
+            if (startX - x > 90) cancelarGrabacion();
+        }
+        function pressEnd() {
+            if (!grabando) return;
+            if (cancelada) { finalizarUI(); return; }
+            detenerYEnviar();
+        }
+        function pressLeave(e) {
+            if (grabando && e.buttons) cancelarGrabacion();
+        }
+
+        function iniciarGrabacion(e) {
+            navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+                recorder = new MediaRecorder(stream);
+                chunks = [];
+                grabando = true; cancelada = false;
+                startX = e.clientX || 0;
+                recorder.ondataavailable = function(ev) { chunks.push(ev.data); };
+                recorder.onstop = function() {
+                    stream.getTracks().forEach(function(t) { t.stop(); });
+                    if (!cancelada) {
+                        const blob = new Blob(chunks, { type: 'audio/webm' });
+                        subirACloudinary(blob, function(url) { enviarMensaje({ tipo: 'audio', url: url }); });
+                    }
+                };
+                recorder.start();
+                // UI estilo WhatsApp
+                document.getElementById('input-area').style.display = 'none';
+                document.getElementById('rec-bar').style.display = 'flex';
+                document.getElementById('mainBtn').classList.add('recording');
+                document.getElementById('rec-hint').innerText = (e.pointerType === 'touch') ? '⟨ Desliza para cancelar' : 'Suelta para enviar · desliza para cancelar';
+                recSeg = 0;
+                document.getElementById('rec-timer').innerText = '0:00';
+                recInterval = setInterval(function() {
+                    recSeg++;
+                    document.getElementById('rec-timer').innerText = Math.floor(recSeg / 60) + ':' + ('0' + (recSeg % 60)).slice(-2);
+                }, 1000);
+                window.addEventListener('pointermove', pressMove);
+                window.addEventListener('pointerup', pressEnd);
+                window.addEventListener('pointercancel', cancelarGrabacion);
+            }).catch(function() { alert("Habilita el micrófono para grabar audio."); });
+        }
+
+        function cancelarGrabacion() {
+            if (!grabando) return;
+            cancelada = true;
+            try { recorder.stop(); } catch (err) {}
+            finalizarUI();
+        }
+        function detenerYEnviar() {
+            try { recorder.stop(); } catch (err) {}
+            finalizarUI();
+        }
+        function finalizarUI() {
+            grabando = false;
+            clearInterval(recInterval);
+            document.getElementById('rec-bar').style.display = 'none';
+            document.getElementById('input-area').style.display = 'flex';
+            document.getElementById('mainBtn').classList.remove('recording');
+            window.removeEventListener('pointermove', pressMove);
+            window.removeEventListener('pointerup', pressEnd);
+            window.removeEventListener('pointercancel', cancelarGrabacion);
+        }
+
+        function enviarTexto() {
+            const input = document.getElementById('text-input');
+            if (input.value.trim() === "") return;
+            enviarMensaje({ tipo: 'texto', contenido: input.value.trim() });
+            input.value = "";
+            toggleIcons();
+        }
+
+        function subirArchivoMsg(input) {
+            if (!input.files || !input.files[0]) return;
+            subirACloudinary(input.files[0], function(url) { enviarMensaje({ tipo: 'foto', url: url }); });
+            input.value = "";
+        }
+
+        function subirACloudinary(file, cb) {
+            const fd = new FormData();
+            fd.append('file', file);
+            fd.append('upload_preset', UPLOAD_PRESET);
+            fetch('https://api.cloudinary.com/v1_1/' + CLOUD_NAME + '/upload', { method: 'POST', body: fd })
+                .then(function(r) { return r.json(); })
+                .then(function(data) { if (data.secure_url) cb(data.secure_url); else alert("Error al subir."); })
+                .catch(function(e) { console.error(e); alert("Error al subir el archivo."); });
+        }
+
+        function toggleIcons() {
+            const hasText = document.getElementById('text-input').value.trim() !== "";
+            document.getElementById('icon-mic').classList.toggle('hidden', hasText);
+            document.getElementById('icon-send').classList.toggle('hidden', !hasText);
+        }
+
+        // ================= NOVEDADES / ESTADOS =================
+        function estadoFresh(e) { return e && e.ts && (Date.now() - e.ts < DIA_MS); }
+
+        function renderNovedades() {
+            // Limpiar mis items vencidos (24 h)
+            const mios = listaEstados[MI_ID];
+            if (mios && mios.items) {
+                Object.keys(mios.items).forEach(function(k) {
+                    const it = mios.items[k];
+                    if (!it.ts || (Date.now() - it.ts >= DIA_MS)) db.ref('estados/' + MI_ID + '/items/' + k).remove();
+                });
+            }
+            const misItems = itemsFreshDe(MI_ID);
+            const miFoto = (listaUsuarios[MI_ID] && listaUsuarios[MI_ID].foto) || DEFAULT_AVATAR;
+            let miHtml;
+            if (misItems.length) {
+                const ultimo = misItems[misItems.length - 1];
+                let vistaPrevia = escapeHTML((ultimo.contenido || '').slice(0, 25));
+                if (ultimo.tipo === 'foto') vistaPrevia = '📷 Foto';
+                if (ultimo.tipo === 'video') vistaPrevia = '🎬 Video';
+                if (ultimo.audioUrl) vistaPrevia += ' 🎵';
+                miHtml =
+                    '<div class="flex items-center gap-3 px-4 py-3 hover:bg-gray-100 cursor-pointer" onclick="verEstado(MI_ID)">' +
+                        '<div class="relative shrink-0"><img src="' + miFoto + '" class="w-14 h-14 rounded-full object-cover border-[3px] border-[#25D366] p-0.5 bg-white"><div class="absolute bottom-0 right-0 w-5 h-5 bg-[#25D366] rounded-full border-2 border-white flex items-center justify-center text-white text-[10px]" onclick="event.stopPropagation(); abrirModalEstado()"><i class="fa fa-plus"></i></div></div>' +
+                        '<div class="flex-1"><h4 class="text-[15px] font-semibold text-gray-900">Mi estado</h4><p class="text-[12px] text-gray-500">' + misItems.length + ' actualizaci' + (misItems.length === 1 ? 'ón' : 'ones') + ' · ' + vistaPrevia + '</p></div>' +
+                        '<button onclick="event.stopPropagation(); borrarMiEstado()" class="text-gray-400 px-2"><i class="fa fa-trash"></i></button>' +
+                    '</div>';
+            } else {
+                miHtml =
+                    '<div class="flex items-center gap-3 px-4 py-3 hover:bg-gray-100 cursor-pointer" onclick="abrirModalEstado()">' +
+                        '<div class="relative shrink-0"><img src="' + miFoto + '" class="w-14 h-14 rounded-full object-cover border-[3px] border-dashed border-gray-300 p-0.5"><div class="absolute bottom-0 right-0 w-5 h-5 bg-[#25D366] rounded-full border-2 border-white flex items-center justify-center text-white text-[10px]"><i class="fa fa-plus"></i></div></div>' +
+                        '<div><h4 class="text-[15px] font-semibold text-gray-900">Mi estado</h4><p class="text-[12px] text-gray-500">Añade una actualización de estado</p></div>' +
+                    '</div>';
+            }
+            document.getElementById('mi-estado-card').innerHTML = miHtml;
+
+            const cont = document.getElementById('estados-lista');
+            cont.innerHTML = '';
+            Object.keys(listaEstados).forEach(function(uid) {
+                if (uid === MI_ID) return;
+                const items = itemsFreshDe(uid);
+                if (!items.length) return;
+                const u = listaUsuarios[uid] || { nombre: 'Usuario', foto: '' };
+                const foto = u.foto || DEFAULT_AVATAR;
+                const ultimo = items[items.length - 1];
+                const row = document.createElement('div');
+                row.className = 'flex items-center gap-3 px-4 py-3 hover:bg-gray-100 cursor-pointer';
+                row.innerHTML =
+                    '<div class="shrink-0"><img src="' + foto + '" class="w-14 h-14 rounded-full object-cover border-[3px] border-[#25D366] p-0.5 bg-white"></div>' +
+                    '<div><h4 class="text-[15px] font-semibold text-gray-900">' + escapeHTML(u.nombre || 'Usuario') + '</h4><p class="text-[12px] text-gray-500">' + items.length + ' actualizaci' + (items.length === 1 ? 'ón' : 'ones') + ' · ' + new Date(ultimo.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) + '</p></div>';
+                row.onclick = function() { verEstado(uid); };
+                cont.appendChild(row);
+            });
+            if (!cont.children.length) {
+                cont.innerHTML = '<p class="text-xs text-gray-400 text-center py-4">Los estados de tus contactos aparecerán aquí.</p>';
+            }
+        }
+
+        let _mediosEstado = [], _musicaEstadoUrl = "";
+
+        function abrirModalEstado() {
+            document.getElementById('estado-texto-input').value = "";
+            _mediosEstado = []; _musicaEstadoUrl = "";
+            document.getElementById('estado-medios-preview').classList.add('hidden');
+            document.getElementById('estado-medios-preview').innerHTML = "";
+            document.getElementById('estado-musica-nombre').classList.add('hidden');
+            document.getElementById('file-estado').value = "";
+            document.getElementById('audio-estado').value = "";
+            openModal('modal-estado');
+        }
+
+        // Preparar fotos/videos (varios a la vez, video máx 1 minuto)
+        function prepararMediosEstado(input) {
+            if (!input.files || !input.files.length) return;
+            _mediosEstado = [];
+            const prev = document.getElementById('estado-medios-preview');
+            prev.innerHTML = "";
+            Array.prototype.forEach.call(input.files, function(f) {
+                const esVideo = f.type.indexOf('video') === 0;
+                if (esVideo) {
+                    const v = document.createElement('video');
+                    v.muted = true; v.playsInline = true; v.preload = 'metadata';
+                    v.src = URL.createObjectURL(f);
+                    v.className = 'w-16 h-16 object-cover rounded shrink-0';
+                    v.onloadedmetadata = function() {
+                        if (v.duration > 60) {
+                            alert("⚠️ El video dura más de 1 minuto (máximo 60 segundos). Ese video se saltea.");
+                            const i = _mediosEstado.indexOf(f);
+                            if (i > -1) _mediosEstado.splice(i, 1);
+                            v.remove();
+                            if (!_mediosEstado.length) prev.classList.add('hidden');
+                        }
+                    };
+                    prev.appendChild(v);
+                } else {
+                    const im = document.createElement('img');
+                    im.src = URL.createObjectURL(f);
+                    im.className = 'w-16 h-16 object-cover rounded shrink-0';
+                    prev.appendChild(im);
+                }
+                _mediosEstado.push(f);
+            });
+            prev.classList.remove('hidden');
+        }
+
+        function subirMusicaEstado(input) {
+            if (!input.files || !input.files[0]) return;
+            subirACloudinary(input.files[0], function(url) {
+                _musicaEstadoUrl = url;
+                const p = document.getElementById('estado-musica-nombre');
+                p.querySelector('span').innerText = ' Música añadida: ' + input.files[0].name;
+                p.classList.remove('hidden');
+            });
+        }
+
+        function publicarEstado() {
+            const texto = document.getElementById('estado-texto-input').value.trim();
+            if (!texto && !_mediosEstado.length) { alert("Escribe algo o añade fotos/videos."); return; }
+            const btn = document.querySelectorAll('#modal-estado button')[1];
+            if (btn) { btn.disabled = true; btn.innerText = 'SUBIENDO...'; }
+            const terminado = function() { closeModal('modal-estado'); };
+            const pushItem = function(item) {
+                db.ref('estados/' + MI_ID + '/items').push(item).then(function() {
+                    db.ref('estados/' + MI_ID + '/ts').set(firebase.database.ServerValue.TIMESTAMP);
+                });
+            };
+            if (!_mediosEstado.length) {
+                const item = { tipo: 'texto', contenido: texto, ts: firebase.database.ServerValue.TIMESTAMP };
+                if (_musicaEstadoUrl) item.audioUrl = _musicaEstadoUrl;
+                pushItem(item);
+                terminado();
+                return;
+            }
+            let pendientes = _mediosEstado.length;
+            _mediosEstado.forEach(function(f) {
+                subirACloudinary(f, function(url) {
+                    const esVideo = f.type.indexOf('video') === 0;
+                    const item = { tipo: esVideo ? 'video' : 'foto', url: url, contenido: texto, ts: firebase.database.ServerValue.TIMESTAMP };
+                    if (!esVideo && _musicaEstadoUrl) item.audioUrl = _musicaEstadoUrl;
+                    db.ref('estados/' + MI_ID + '/items').push(item).then(function() {
+                        db.ref('estados/' + MI_ID + '/ts').set(firebase.database.ServerValue.TIMESTAMP);
+                        pendientes--;
+                        if (pendientes <= 0) terminado();
+                    });
+                });
+            });
+        }
+        function borrarMiEstado() { db.ref('estados/' + MI_ID).remove(); }
+
+        function itemsFreshDe(uid) {
+            const e = listaEstados[uid];
+            if (!e || !e.items) return [];
+            return Object.keys(e.items).map(function(k) {
+                return Object.assign({ id: k }, e.items[k]);
+            }).filter(function(it) { return it.ts && (Date.now() - it.ts < DIA_MS); })
+              .sort(function(a, b) { return a.ts - b.ts; });
+        }
+
+        function verEstado(uid) {
+            colaEstados = [];
+            if (uid === MI_ID) {
+                itemsFreshDe(MI_ID).forEach(function(it) { colaEstados.push({ uid: MI_ID, item: it }); });
+            } else {
+                Object.keys(listaEstados).forEach(function(u) {
+                    if (u === MI_ID) return;
+                    itemsFreshDe(u).forEach(function(it) { colaEstados.push({ uid: u, item: it }); });
+                });
+            }
+            colaEstados.sort(function(a, b) { return a.item.ts - b.item.ts; });
+            if (!colaEstados.length) return;
+            const i = colaEstados.findIndex(function(x) { return x.uid === uid; });
+            idxEstado = Math.max(0, i);
+            mostrarEstadoActual();
+            const m = document.getElementById('modal-estado-ver');
+            m.classList.remove('hidden'); m.classList.add('flex');
+        }
+        function mostrarEstadoActual() {
+            const uid = colaEstados[idxEstado].uid;
+            const e = colaEstados[idxEstado].item;
+            const u = listaUsuarios[uid] || { nombre: 'Usuario', foto: '' };
+            const foto = u.foto || DEFAULT_AVATAR;
+            document.getElementById('estado-ver-avatar').innerHTML = '<img src="' + foto + '" class="w-9 h-9 rounded-full object-cover border border-white/50">';
+            document.getElementById('estado-ver-nombre').innerText = u.nombre || 'Usuario';
+            document.getElementById('estado-ver-hora').innerText = new Date(e.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+            const colores = ['#128C7E', '#075E54', '#34B7F1', '#6b3fa0', '#b0653a'];
+            let hash = 0; for (let i = 0; i < uid.length; i++) hash += uid.charCodeAt(i);
+            const cont = document.getElementById('estado-ver-contenido');
+            let h = '';
+            if (e.tipo === 'foto') {
+                h = '<img src="' + e.url + '" class="max-w-full max-h-[62vh] object-contain rounded-lg shadow-2xl">';
+            } else if (e.tipo === 'video') {
+                h = '<video src="' + e.url + '" controls autoplay playsinline class="max-w-full max-h-[62vh] rounded-lg shadow-2xl"></video>';
+            } else {
+                h = '<div class="w-full max-w-sm rounded-2xl p-8 text-center text-white text-xl font-medium shadow-2xl" style="background:' + colores[hash % colores.length] + '">' + escapeHTML(e.contenido || '') + '</div>';
+            }
+            if (e.audioUrl) {
+                h += '<audio src="' + e.audioUrl + '" autoplay controls class="mt-3 w-64 max-w-full"></audio>';
+            }
+            if (uid === MI_ID) {
+                const nVistos = e.vistos ? Object.keys(e.vistos).length : 0;
+                h += '<p class="text-white/95 text-xs mt-3 bg-black/50 px-3 py-1.5 rounded-full"><i class="fa fa-eye"></i> ' + nVistos + ' ' + (nVistos === 1 ? 'persona vio tu estado' : 'personas vieron tu estado') + '</p>';
+            } else {
+                db.ref('estados/' + uid + '/items/' + e.id + '/vistos/' + MI_ID).set(firebase.database.ServerValue.TIMESTAMP);
+            }
+            cont.innerHTML = h;
+        }
+        function siguienteEstado(ev) {
+            if (ev && (ev.target.tagName === 'VIDEO' || ev.target.tagName === 'AUDIO')) return;
+            if (idxEstado < colaEstados.length - 1) { idxEstado++; mostrarEstadoActual(); } else cerrarVerEstado();
+        }
+        function estadoAnterior() { if (idxEstado > 0) { idxEstado--; mostrarEstadoActual(); } }
+        function cerrarVerEstado() { const m = document.getElementById('modal-estado-ver'); m.classList.add('hidden'); m.classList.remove('flex'); }
+
+        // ================= COMUNIDADES =================
+        function renderComunidades() {
+            const cont = document.getElementById('comunidades-lista');
+            cont.innerHTML = '';
+            Object.keys(listaComunidades).forEach(function(cid) {
+                const c = listaComunidades[cid];
+                const numG = c.grupos ? Object.keys(c.grupos).length : 0;
+                const row = document.createElement('div');
+                row.className = 'bg-white rounded-xl shadow-sm p-3.5 flex items-center gap-3 mb-2 cursor-pointer hover:bg-gray-50';
+                row.innerHTML =
+                    '<div class="w-14 h-14 rounded-2xl overflow-hidden bg-gray-200 flex items-center justify-center text-[#008069] text-xl shrink-0">' + (c.foto ? '<img src="' + c.foto + '" class="w-full h-full object-cover">' : '<i class="fa fa-users"></i>') + '</div>' +
+                    '<div class="min-w-0"><h4 class="font-semibold text-gray-900 text-sm truncate">' + escapeHTML(c.nombre || 'Comunidad') + '</h4><p class="text-[12px] text-gray-500">' + numG + ' grupos · ' + Object.keys(c.miembros || {}).length + ' miembros</p></div>';
+                row.onclick = function() { abrirComunidad(cid); };
+                cont.appendChild(row);
+            });
+            if (!cont.children.length) {
+                cont.innerHTML = '<p class="text-xs text-gray-400 text-center py-6 px-8">Crea una comunidad para reunir grupos por temas, como el barrio, la escuela o el club.</p>';
+            }
+        }
+
+        function abrirModalComunidad() {
+            document.getElementById('comunidad-nombre-input').value = "";
+            document.getElementById('comunidad-desc-input').value = "";
+            _fotoComunidadUrl = "";
+            document.getElementById('comunidad-foto-preview').innerHTML = '<i class="fa fa-users"></i>';
+            document.getElementById('menu-dropdown').classList.add('hidden');
+            openModal('modal-comunidad');
+        }
+        function subirFotoComunidad(input) {
+            if (!input.files || !input.files[0]) return;
+            subirACloudinary(input.files[0], function(url) {
+                _fotoComunidadUrl = url;
+                document.getElementById('comunidad-foto-preview').innerHTML = '<img src="' + url + '" class="w-full h-full object-cover">';
+            });
+        }
+        function confirmarCrearComunidad() {
+            const nombre = document.getElementById('comunidad-nombre-input').value.trim();
+            if (!nombre) { alert("Ponle nombre a la comunidad."); return; }
+            const desc = document.getElementById('comunidad-desc-input').value.trim();
+            const cid = 'comunidad_' + db.ref().push().key;
+            const miembros = {}; miembros[MI_ID] = true;
+            const upd = {};
+            upd['comunidades/' + cid] = { nombre: nombre, descripcion: desc, foto: _fotoComunidadUrl, creador: MI_ID, miembros: miembros, grupos: {} };
+            upd['misComunidades/' + MI_ID + '/' + cid] = true;
+            db.ref().update(upd).then(function() {
+                closeModal('modal-comunidad');
+                mostrarPantalla('comunidades');
+                abrirComunidad(cid);
+            });
+        }
+
+        function abrirComunidad(cid) {
+            comunidadActualId = cid;
+            // Suscribirse a los grupos de la comunidad (permitido por las reglas)
+            const c = listaComunidades[cid];
+            if (c && c.grupos) Object.keys(c.grupos).forEach(attachGrupoListener);
+            renderDetalleComunidad(cid);
+            document.getElementById('pantalla-comunidad').classList.remove('translate-x-full');
+        }
+
+        function renderDetalleComunidad(cid) {
+            const c = listaComunidades[cid];
+            if (!c) return;
+            document.getElementById('comunidad-titulo').innerText = c.nombre || 'Comunidad';
+            document.getElementById('comunidad-nombre').innerText = c.nombre || 'Comunidad';
+            document.getElementById('comunidad-desc').innerText = c.descripcion || 'Comunidad de VYNIX';
+            document.getElementById('comunidad-miembros').innerText = Object.keys(c.miembros || {}).length + ' miembros';
+            document.getElementById('comunidad-avatar').innerHTML = c.foto ? '<img src="' + c.foto + '" class="w-full h-full object-cover">' : '<i class="fa fa-users"></i>';
+            const cont = document.getElementById('comunidad-grupos');
+            cont.innerHTML = '';
+            Object.keys(listaGrupos).forEach(function(gid) {
+                const g = listaGrupos[gid];
+                if (g.comunidadId !== cid) return;
+                const num = g.miembros ? Object.keys(g.miembros).length : 0;
+                const row = document.createElement('div');
+                row.className = 'bg-white rounded-xl shadow-sm p-3.5 flex items-center gap-3 mb-2 cursor-pointer hover:bg-gray-50';
+                row.innerHTML =
+                    '<div class="w-11 h-11 rounded-full overflow-hidden bg-[#8696a0] flex items-center justify-center text-white shrink-0">' + (g.foto ? '<img src="' + g.foto + '" class="w-full h-full object-cover">' : '<i class="fa fa-users"></i>') + '</div>' +
+                    '<div class="min-w-0"><h4 class="font-semibold text-gray-900 text-sm truncate">' + escapeHTML(g.nombre || 'Grupo') + '</h4><p class="text-[12px] text-gray-500">' + num + ' miembros</p></div>';
+                row.onclick = function() {
+                    cerrarComunidad();
+                    abrirChat(gid, g.nombre || 'Grupo', avatarMiniGrupo(g), num + ' miembros', true);
+                };
+                cont.appendChild(row);
+            });
+            if (!cont.children.length) {
+                cont.innerHTML = '<p class="text-center text-xs text-gray-400 py-4">Aún no hay grupos. ¡Crea el primero!</p>';
+            }
+        }
+
+        function cerrarComunidad() {
+            document.getElementById('pantalla-comunidad').classList.add('translate-x-full');
+            comunidadActualId = null;
+        }
+
+        // ================= GRUPOS =================
+        function abrirModalGrupo(cidComunidad) {
+            _fotoGrupoUrl = "";
+            _grupoComunidadId = cidComunidad || null;
+            document.getElementById('grupo-nombre-input').value = "";
+            document.getElementById('grupo-foto-preview').innerHTML = '<i class="fa fa-camera"></i>';
+            document.getElementById('grupo-modal-titulo').innerText = cidComunidad ? 'Añadir grupo a la comunidad' : 'Nuevo grupo';
+            document.getElementById('menu-dropdown').classList.add('hidden');
+
+            const lista = document.getElementById('grupo-miembros-lista');
+            lista.innerHTML = '';
+            Object.keys(miAgenda).forEach(function(id) {
+                const u = listaUsuarios[id];
+                if (!u) return;
+                const foto = u.foto || DEFAULT_AVATAR;
+                const row = document.createElement('label');
+                row.className = 'flex items-center gap-3 py-2.5 cursor-pointer';
+                row.innerHTML =
+                    '<img src="' + foto + '" class="w-10 h-10 rounded-full object-cover">' +
+                    '<span class="flex-1 text-sm text-gray-800">' + escapeHTML(u.nombre || 'Usuario') + '</span>' +
+                    '<input type="checkbox" value="' + id + '" class="w-5 h-5 accent-[#00a884]">';
+                lista.appendChild(row);
+            });
+            if (!lista.children.length) lista.innerHTML = '<p class="text-xs text-gray-400 py-3">No tienes contactos todavía. Agrégalos con Nuevo contacto (⋮).</p>';
+            openModal('modal-grupo');
+        }
+
+        function subirFotoGrupo(input) {
+            if (!input.files || !input.files[0]) return;
+            subirACloudinary(input.files[0], function(url) {
+                _fotoGrupoUrl = url;
+                document.getElementById('grupo-foto-preview').innerHTML = '<img src="' + url + '" class="w-full h-full object-cover">';
+            });
+        }
+
+        function confirmarCrearGrupo() {
+            const nombre = document.getElementById('grupo-nombre-input').value.trim();
+            if (!nombre) { alert("Ponle nombre al grupo."); return; }
+            const seleccionados = [];
+            document.querySelectorAll('#grupo-miembros-lista input:checked').forEach(function(cb) { seleccionados.push(cb.value); });
+            const gid = 'grupo_' + db.ref().push().key;
+            const miembros = {}; miembros[MI_ID] = true;
+            seleccionados.forEach(function(m) { miembros[m] = true; });
+            const data = { nombre: nombre, foto: _fotoGrupoUrl, creador: MI_ID, miembros: miembros };
+            if (_grupoComunidadId) data.comunidadId = _grupoComunidadId;
+            const upd = {};
+            upd['grupos/' + gid] = data;
+            Object.keys(miembros).forEach(function(m) {
+                upd['chatMembers/' + gid + '/' + m] = true;
+                upd['misGrupos/' + m + '/' + gid] = true;
+            });
+            if (_grupoComunidadId) upd['comunidades/' + _grupoComunidadId + '/grupos/' + gid] = { nombre: nombre };
+            db.ref().update(upd).then(function() {
+                closeModal('modal-grupo');
+                mostrarPantalla('chats');
+                abrirChat(gid, nombre, avatarMiniGrupo({ foto: _fotoGrupoUrl }), Object.keys(miembros).length + ' miembros', true);
+            }).catch(function(e) { alert("Error al crear el grupo: " + e.message); });
+        }
+
+        // ================= AGREGAR CONTACTO POR CORREO =================
+        function abrirModalContacto() {
+            document.getElementById('contacto-email-input').value = "";
+            document.getElementById('contacto-user-input').value = "";
+            document.getElementById('contacto-tel-input').value = "";
+            document.getElementById('menu-dropdown').classList.add('hidden');
+            openModal('modal-contacto');
+        }
+
+        // Conexión mutua: crea el chat privado y lo agrega a ambas agendas
+        function conectarContacto(uidEncontrado) {
+            if (miAgenda[uidEncontrado]) { alert("Ese contacto ya está en tu lista."); closeModal('modal-contacto'); return; }
+            const cidNuevo = 'priv_' + db.ref().push().key;
+            db.ref('agenda/' + MI_ID + '/' + uidEncontrado).set({ chatId: cidNuevo, ts: firebase.database.ServerValue.TIMESTAMP }).then(function() {
+                return db.ref('agenda/' + uidEncontrado + '/' + MI_ID).set({ chatId: cidNuevo, ts: firebase.database.ServerValue.TIMESTAMP });
+            }).then(function() {
+                const upd = {};
+                upd['chatMembers/' + cidNuevo + '/' + MI_ID] = true;
+                upd['chatMembers/' + cidNuevo + '/' + uidEncontrado] = true;
+                return db.ref().update(upd);
+            }).then(function() {
+                sincronizarEstados();
+                renderListaChats();
+                const nombreAmigo = (listaUsuarios[uidEncontrado] && listaUsuarios[uidEncontrado].nombre) || 'tu amigo/a';
+                closeModal('modal-contacto');
+                alert("¡Listo! " + nombreAmigo + " ya es tu contacto. Ambos pueden chatear ahora, en tiempo real y con total privacidad.");
+            }).catch(function(e) { alert("Error: " + e.message); });
+        }
+
+        function confirmarGuardarContacto() {
+            const user = document.getElementById('contacto-user-input').value.trim().toLowerCase().replace(/^@/, '');
+            const email = document.getElementById('contacto-email-input').value.trim().toLowerCase();
+            const tel = document.getElementById('contacto-tel-input').value.replace(/\D/g, '');
+
+            if (user !== "") {
+                if (!/^[a-z0-9_]{3,20}$/.test(user)) { alert("El usuario debe tener entre 3 y 20 letras/números/guiones bajos (sin @ ni espacios)."); return; }
+                db.ref('usernames/' + user).once('value').then(function(s) {
+                    const uid = s.val();
+                    if (!uid) { alert("No existe ningún usuario @" + user + "."); return; }
+                    conectarContacto(uid);
+                }).catch(function(e) { alert("Error: " + e.message); });
+                return;
+            }
+            if (email !== "") {
+                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { alert("Ingresá un correo válido (o el @usuario, o el teléfono)."); return; }
+                if (email === emailActual.toLowerCase()) { alert("Ese es tu propio correo."); return; }
+                const key = email.replace(/[^a-zA-Z0-9]/g, '_');
+                db.ref('emails/' + key).once('value').then(function(s) {
+                    const uid = s.val();
+                    if (!uid) { alert("Ese correo todavía no está registrado en VYNIX."); return; }
+                    conectarContacto(uid);
+                }).catch(function(e) { alert("Error: " + e.message); });
+                return;
+            }
+            if (tel !== "") {
+                if (tel.length < 6 || tel.length > 18) { alert("Teléfono inválido. Con código de país, solo números (6 a 18 dígitos)."); return; }
+                db.ref('phones/' + tel).once('value').then(function(s) {
+                    const uid = s.val();
+                    if (!uid) { alert("Ese teléfono no está cargado en VYNIX (tu amigo/a lo carga desde su perfil)."); return; }
+                    conectarContacto(uid);
+                }).catch(function(e) { alert("Error: " + e.message); });
+                return;
+            }
+            alert("Completá el @usuario, el correo o el teléfono de tu amigo/a.");
+        }
+
+        // ================= @USUARIO =====
+        function asegurarIdentificador() {
+            db.ref('usuarios_chat/' + MI_ID).once('value').then(function(s) {
+                const u = s.val();
+                if (!u || u.usuario) return;
+                const base = (emailActual.split('@')[0] || 'user').toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 15) || 'user';
+                elegirUsuario(base, 0);
+            });
+        }
+        function elegirUsuario(base, intento) {
+            const candidato = intento === 0 ? base : base + intento;
+            db.ref('usernames/' + candidato).once('value').then(function(s) {
+                if (s.exists()) return elegirUsuario(base, intento + 1);
+                const upd = {};
+                upd['usuarios_chat/' + MI_ID + '/usuario'] = candidato;
+                upd['usernames/' + candidato] = MI_ID;
+                db.ref().update(upd);
+            });
+        }
+        function copiarMiTag() {
+            const u = document.getElementById('perfil-usuario').innerText;
+            const aux = document.createElement('textarea');
+            aux.value = 'Agregame en VYNIX: @' + u;
+            document.body.appendChild(aux);
+            aux.select();
+            document.execCommand('copy');
+            document.body.removeChild(aux);
+            const icono = event.target.closest('button').querySelector('i');
+            icono.className = 'fa fa-check text-green-500';
+            setTimeout(function() { icono.className = 'fa fa-copy'; }, 1500);
+        }
+
+        // ================= TELÉFONO (opcional, verificado) =================
+        function abrirModalTelefono() {
+            document.getElementById('tel-input').value = telActual || '';
+            openModal('modal-telefono');
+        }
+        function guardarTelefono() {
+            const digits = document.getElementById('tel-input').value.replace(/\D/g, '');
+            if (digits.length < 6 || digits.length > 18) { alert("Ingresá el número con código de país (solo números, 6 a 18 dígitos)."); return; }
+            const upd = {};
+            upd['usuarios_chat/' + MI_ID + '/telefono'] = digits;
+            upd['phones/' + digits] = MI_ID;
+            db.ref().update(upd).then(function() {
+                telActual = digits;
+                closeModal('modal-telefono');
+            });
+        }
+
+        // ================= PERFIL =================
+        function subirAvatar(input) {
+            if (!input.files || !input.files[0]) return;
+            subirACloudinary(input.files[0], function(url) { userRef.update({ foto: url }); });
+        }
+        function openNameModal() {
+            document.getElementById('modal-name-input').value = nombreActual;
+            openModal('modal-nombre');
+            setTimeout(function() { document.getElementById('modal-name-input').focus(); }, 100);
+        }
+        function confirmSaveName() {
+            const v = document.getElementById('modal-name-input').value.trim();
+            if (v) { nombreActual = v; userRef.update({ nombre: v }); }
+            closeModal('modal-nombre');
+        }
+        function cerrarSesion() {
+            localStorage.removeItem('wplus');
+            location.reload();
+        }
+        function copiarMiCorreo() {
+            const aux = document.createElement('textarea');
+            aux.value = emailActual;
+            document.body.appendChild(aux);
+            aux.select();
+            document.execCommand('copy');
+            document.body.removeChild(aux);
+            const icono = event.target.closest('button').querySelector('i');
+            icono.className = 'fa fa-check text-green-500';
+            setTimeout(function() { icono.className = 'fa fa-copy'; }, 1500);
+        }
+
+        // ================= LLAMADAS REALES (WebRTC, señalización por Firebase) =================
+        // ===== TIMBRE DE LLAMADA (suena, vibra y avisa en la pestaña) =====
+        let ringAudioCtx = null, ringInterval = null, titleInterval = null;
+        const tituloOriginal = 'VYNIX';
+        function prepararAudioLlamada() {
+            if (!ringAudioCtx) { try { ringAudioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+            else if (ringAudioCtx.state === 'suspended') ringAudioCtx.resume();
+        }
+        document.addEventListener('pointerdown', prepararAudioLlamada);
+        function reproducirTimbre(saliente) {
+            detenerTimbre();
+            prepararAudioLlamada();
+            if (!ringAudioCtx) return;
+            const ciclo = function() {
+                if (!ringAudioCtx) return;
+                const t = ringAudioCtx.currentTime + 0.03;
+                [440, 480].forEach(function(freq) {
+                    const osc = ringAudioCtx.createOscillator();
+                    const gain = ringAudioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.value = freq;
+                    gain.gain.setValueAtTime(0.0001, t);
+                    gain.gain.exponentialRampToValueAtTime(0.12, t + 0.04);
+                    gain.gain.setValueAtTime(0.12, t + (saliente ? 0.8 : 1));
+                    gain.gain.exponentialRampToValueAtTime(0.0001, t + (saliente ? 1 : 1.1));
+                    osc.connect(gain);
+                    gain.connect(ringAudioCtx.destination);
+                    osc.start(t);
+                    osc.stop(t + 1.2);
+                });
+                if (navigator.vibrate && !saliente) navigator.vibrate([400, 300, 400, 300, 400]);
+            };
+            ciclo();
+            ringInterval = setInterval(ciclo, saliente ? 4000 : 2500);
+        }
+        function detenerTimbre() {
+            clearInterval(ringInterval);
+            if (navigator.vibrate) navigator.vibrate(0);
+        }
+        function tituloLlamada(nombre) {
+            clearInterval(titleInterval);
+            let fase = false;
+            titleInterval = setInterval(function() {
+                document.title = fase ? tituloOriginal : ('📞 ' + nombre + ' te llama · VYNIX');
+                fase = !fase;
+            }, 900);
+        }
+        function tituloNormal() {
+            clearInterval(titleInterval);
+            document.title = tituloOriginal;
+        }
+
+        let pc = null, callLocalStream = null, callIdActual = null, callTimer = null, callCloseTimer = null;
+        let llamadaSaliente = false, llamadaVideo = false, llamadaOtroUid = null;
+        const RTC_SERVIDORES = { iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }] };
+
+        function escucharLlamadasEntrantes() {
+            db.ref('llamadas').limitToLast(30).on('child_added', function(snap) {
+                const call = snap.val();
+                if (!call) return;
+                if (call.receptor === MI_ID && call.estado === 'sonando') {
+                    if (callIdActual) { db.ref('llamadas/' + snap.key + '/estado').set('colgada'); return; }
+                    callIdActual = snap.key;
+                    llamadaSaliente = false;
+                    llamadaVideo = (call.tipo === 'video');
+                    llamadaOtroUid = call.llamador;
+                    const foto = call.llamadorFoto || '';
+                    mostrarPantallaLlamada(call.llamadorNombre || 'Llamada', foto ? '<img src="' + foto + '" class="w-full h-full object-cover">' : '<i class="fa fa-user"></i>', 'entrante', (llamadaVideo ? 'Videollamada entrante' : 'Llamada entrante'));
+                }
+                db.ref('llamadas/' + snap.key + '/estado').on('value', function(se) {
+                    const est = se.val();
+                    if (!est || callIdActual !== snap.key) return;
+                    if (est === 'contestada') { detenerTimbre(); tituloNormal(); }
+                    if (est === 'contestada' && llamadaSaliente) {
+                        document.getElementById('llamada-estado').innerText = 'En línea';
+                    }
+                    if (est === 'perdida') {
+                        if (llamadaSaliente) {
+                            document.getElementById('llamada-estado').innerText = 'No contesta';
+                            callCloseTimer = setTimeout(finalizarLlamadaLocal, 2000);
+                        } else finalizarLlamadaLocal();
+                    }
+                    if (est === 'colgada') finalizarLlamadaLocal();
+                });
+            });
+        }
+
+        function mostrarPantallaLlamada(nombre, avatarHTML, modo, texto) {
+            document.getElementById('llamada-nombre').innerText = nombre;
+            document.getElementById('llamada-avatar').innerHTML = avatarHTML;
+            document.getElementById('llamada-estado').innerText = texto;
+            document.getElementById('llamada-centro').style.opacity = '1';
+            document.getElementById('llamada-remoto').classList.add('hidden');
+            const lv = document.getElementById('llamada-video');
+            lv.classList.add('hidden');
+            const entrante = (modo === 'entrante');
+            document.getElementById('llamada-barra-entrante').classList.toggle('hidden', !entrante);
+            document.getElementById('llamada-barra-entrante').classList.toggle('flex', entrante);
+            document.getElementById('llamada-barra-curso').classList.toggle('hidden', entrante);
+            const p = document.getElementById('pantalla-llamada');
+            p.classList.remove('hidden'); p.classList.add('flex');
+            if (entrante) { reproducirTimbre(false); tituloLlamada(nombre); }
+            else { reproducirTimbre(true); }
+        }
+
+        function configurarPC() {
+            pc.ontrack = function(ev) {
+                if (ev.track.kind === 'video') {
+                    const r = document.getElementById('llamada-remoto');
+                    r.srcObject = ev.streams[0];
+                    r.classList.remove('hidden');
+                    document.getElementById('llamada-centro').style.opacity = '0';
+                } else {
+                    const r = document.getElementById('llamada-remoto');
+                    if (!r.srcObject) { r.srcObject = ev.streams[0]; r.classList.add('hidden'); }
+                }
+            };
+            pc.onconnectionstatechange = function() {
+                if (pc && (pc.connectionState === 'failed' || pc.connectionState === 'closed')) {
+                    document.getElementById('llamada-estado').innerText = 'Conexión finalizada';
+                }
+            };
+        }
+        function escucharCandidatos(uidOtro) {
+            db.ref('llamadas/' + callIdActual + '/candidatos/' + uidOtro).on('child_added', function(sc) {
+                if (pc && sc.val()) pc.addIceCandidate(new RTCIceCandidate(sc.val())).catch(function() {});
+            });
+        }
+        function activarVideoLocal() {
+            const lv = document.getElementById('llamada-video');
+            lv.srcObject = callLocalStream;
+            lv.classList.remove('hidden');
+            if (llamadaVideo) document.getElementById('llamada-centro').style.opacity = '0';
+        }
+
+        async function llamar(tipo) {
+            if (!CHAT_OTRO_UID) return;
+            llamadaVideo = (tipo === 'video');
+            llamadaSaliente = true;
+            llamadaOtroUid = CHAT_OTRO_UID;
+            callIdActual = 'call_' + db.ref().push().key;
+            mostrarPantallaLlamada(document.getElementById('chat-nombre').innerText, document.getElementById('chat-avatar').innerHTML, 'saliente', 'Llamando...');
+            try {
+                callLocalStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: llamadaVideo });
+            } catch (e) {
+                alert('Necesitás permitir el micrófono' + (llamadaVideo ? ' y la cámara' : '') + ' para llamar.');
+                finalizarLlamadaLocal();
+                return;
+            }
+            activarVideoLocal();
+            pc = new RTCPeerConnection(RTC_SERVIDORES);
+            configurarPC();
+            callLocalStream.getTracks().forEach(function(t) { pc.addTrack(t, callLocalStream); });
+            pc.onicecandidate = function(ev) {
+                if (ev.candidate) db.ref('llamadas/' + callIdActual + '/candidatos/' + MI_ID).push(ev.candidate.toJSON());
+            };
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            await db.ref('llamadas/' + callIdActual).set({
+                llamador: MI_ID, receptor: CHAT_OTRO_UID, tipo: tipo, estado: 'sonando',
+                llamadorNombre: nombreActual,
+                llamadorFoto: (listaUsuarios[MI_ID] && listaUsuarios[MI_ID].foto) || ''
+            });
+            await db.ref('llamadas/' + callIdActual + '/offer').set(offer);
+            db.ref('llamadas/' + callIdActual + '/answer').on('value', function(sa) {
+                const a = sa.val();
+                if (a && pc && pc.signalingState !== 'stable') {
+                    pc.setRemoteDescription(new RTCSessionDescription(a));
+                    db.ref('llamadas/' + callIdActual + '/estado').set('contestada');
+                    document.getElementById('llamada-estado').innerText = 'En línea';
+                }
+            });
+            escucharCandidatos(CHAT_OTRO_UID);
+            callTimer = setTimeout(function() {
+                db.ref('llamadas/' + callIdActual + '/estado').once('value').then(function(st) {
+                    if (st.val() === 'sonando') db.ref('llamadas/' + callIdActual + '/estado').set('perdida');
+                });
+            }, 30000);
+        }
+
+        async function contestarLlamada() {
+            try {
+                callLocalStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: llamadaVideo });
+            } catch (e) {
+                alert('Necesitás permitir el micrófono' + (llamadaVideo ? ' y la cámara' : '') + ' para contestar.');
+                return;
+            }
+            activarVideoLocal();
+            document.getElementById('llamada-estado').innerText = 'Conectando...';
+            pc = new RTCPeerConnection(RTC_SERVIDORES);
+            configurarPC();
+            callLocalStream.getTracks().forEach(function(t) { pc.addTrack(t, callLocalStream); });
+            pc.onicecandidate = function(ev) {
+                if (ev.candidate) db.ref('llamadas/' + callIdActual + '/candidatos/' + MI_ID).push(ev.candidate.toJSON());
+            };
+            const offerSnap = await db.ref('llamadas/' + callIdActual + '/offer').once('value');
+            if (!offerSnap.val()) { colgar(); return; }
+            await pc.setRemoteDescription(new RTCSessionDescription(offerSnap.val()));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            await db.ref('llamadas/' + callIdActual + '/answer').set(answer);
+            await db.ref('llamadas/' + callIdActual + '/estado').set('contestada');
+            document.getElementById('llamada-estado').innerText = 'En línea';
+            escucharCandidatos(llamadaOtroUid);
+        }
+
+        function rechazarLlamada() { colgar(); }
+        function toggleCallBtn(btn) {
+            btn.classList.toggle('bg-white');
+            btn.classList.toggle('text-gray-900');
+            btn.classList.toggle('bg-white/10');
+            btn.classList.toggle('text-white');
+        }
+        function toggleMic() {
+            if (callLocalStream) { const t = callLocalStream.getAudioTracks()[0]; if (t) t.enabled = !t.enabled; }
+        }
+        function toggleCam() {
+            if (callLocalStream) { const t = callLocalStream.getVideoTracks()[0]; if (t) t.enabled = !t.enabled; }
+        }
+        function colgar() {
+            clearTimeout(callTimer); clearTimeout(callCloseTimer);
+            if (callIdActual) {
+                db.ref('llamadas/' + callIdActual + '/estado').set('colgada').catch(function() {});
+                db.ref('llamadas/' + callIdActual).remove().catch(function() {});
+            }
+            finalizarLlamadaLocal();
+        }
+        function finalizarLlamadaLocal() {
+            clearTimeout(callTimer); clearTimeout(callCloseTimer);
+            detenerTimbre();
+            tituloNormal();
+            if (pc) { try { pc.close(); } catch (e) {} pc = null; }
+            if (callLocalStream) { callLocalStream.getTracks().forEach(function(t) { t.stop(); }); callLocalStream = null; }
+            if (callIdActual) { db.ref('llamadas/' + callIdActual).off(); }
+            const r = document.getElementById('llamada-remoto');
+            r.srcObject = null; r.classList.add('hidden');
+            const lv = document.getElementById('llamada-video');
+            lv.srcObject = null; lv.classList.add('hidden');
+            document.getElementById('llamada-centro').style.opacity = '1';
+            document.getElementById('llamada-centro').classList.remove('hidden');
+            const p = document.getElementById('pantalla-llamada');
+            p.classList.add('hidden'); p.classList.remove('flex');
+            callIdActual = null; llamadaOtroUid = null;
+        }
+
+        // ================= UTILIDADES =================
+        function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+        function verFotoGrande(src, titulo) {
+            document.getElementById('foto-img').src = src;
+            document.getElementById('foto-titulo').innerText = titulo || 'Foto';
+            const m = document.getElementById('modal-foto');
+            m.classList.remove('hidden'); m.classList.add('flex');
+        }
+        function cerrarFotoGrande() {
+            const m = document.getElementById('modal-foto');
+            m.classList.add('hidden'); m.classList.remove('flex');
+        }
+        function openVaciarModal() { openModal('modal-vaciar'); }
+        function confirmVaciarChat() {
+            db.ref('conversaciones/' + CHAT_ACTUAL_ID + '/mensajes').remove();
+            closeModal('modal-vaciar');
+        }
+        function escapeHTML(str) {
+            if (str === null || str === undefined) return "";
+            return String(str).replace(/[&<>"']/g, function(tag) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[tag];
+            });
+        }
+
+        // Eventos
+        document.getElementById('text-input').addEventListener('keypress', function(e) { if (e.key === 'Enter') enviarTexto(); });
+        document.getElementById('login-email-input').addEventListener('keypress', function(e) { if (e.key === 'Enter') enviarCodigoVerificacion(); });
+        document.getElementById('login-code-input').addEventListener('keypress', function(e) { if (e.key === 'Enter') verificarCodigoEIngresar(); });
+        document.getElementById('login-name-input').addEventListener('keypress', function(e) { if (e.key === 'Enter') verificarCodigoEIngresar(); });
+        document.addEventListener('click', function(e) {
+            const menu = document.getElementById('menu-dropdown');
+            if (!menu.classList.contains('hidden') && !e.target.closest('#menu-dropdown') && !e.target.closest('header')) {
+                menu.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
